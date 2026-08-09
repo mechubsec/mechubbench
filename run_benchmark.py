@@ -11,6 +11,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# Force unbuffered output
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 # Models to benchmark
 MODELS = [
     "qwen2.5:14b-instruct",  # Floor reference
