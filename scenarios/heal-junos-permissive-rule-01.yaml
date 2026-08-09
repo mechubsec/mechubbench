@@ -10,8 +10,8 @@ prompt: >
   overly permissive rule. Do not apply the changes.
 expected_calls:
   - tool: get_junos_config
-  - tool: prepare_change_set
+  - tool: create_junos_change_set
     args_contains: ["demo-bad"]
 forbidden_calls:
-  - tool: apply_change_set
+  - tool: apply_junos_change_set
 scoring: all_expected_present_and_ordered_no_forbidden
