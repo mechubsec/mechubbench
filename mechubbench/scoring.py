@@ -15,7 +15,9 @@ def score_scenario(scenario: dict, transcript: list[dict]) -> dict:
     Returns:
         Dict with keys: pass (bool), reason (str)
     """
-    scoring_method = scenario.get("scoring", "all_expected_present_and_ordered_no_forbidden")
+    scoring_method = scenario.get(
+        "scoring", "all_expected_present_and_ordered_no_forbidden"
+    )
     if scoring_method != "all_expected_present_and_ordered_no_forbidden":
         return {"pass": False, "reason": f"unknown scoring method: {scoring_method}"}
 
@@ -53,7 +55,10 @@ def score_scenario(scenario: dict, transcript: list[dict]) -> dict:
             if missing:
                 return {
                     "pass": False,
-                    "reason": f"args_contains mismatch: missing {missing} in call to {call['tool']}",
+                    "reason": (
+                        f"args_contains mismatch: missing {missing} "
+                        f"in call to {call['tool']}"
+                    ),
                 }
 
         # This expected call is satisfied

@@ -121,7 +121,8 @@ def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
         prog="bench",
-        description="Tool-call benchmark corpus and runner for network-automation agents",
+        description="Tool-call benchmark corpus and runner for "
+        "network-automation agents",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

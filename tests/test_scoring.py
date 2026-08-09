@@ -1,6 +1,5 @@
 """Tests for scenario scoring logic."""
 
-import pytest
 
 from mechubbench import scoring
 

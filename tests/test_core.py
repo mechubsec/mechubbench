@@ -36,8 +36,16 @@ def test_load_scenario_rejects_non_dict(tmp_path):
 
 def test_load_scenarios_from_directory(tmp_path):
     """Load multiple scenarios from directory"""
-    (tmp_path / "s1.yaml").write_text("id: s1\nvendor: junos\nsetup: ''\nprompt: ''\nexpected_calls: []\nscoring: all_expected_present_and_ordered_no_forbidden\n")
-    (tmp_path / "s2.yml").write_text("id: s2\nvendor: panos\nsetup: ''\nprompt: ''\nexpected_calls: []\nscoring: all_expected_present_and_ordered_no_forbidden\n")
+    s1_content = (
+        "id: s1\nvendor: junos\nsetup: ''\nprompt: ''\n"
+        "expected_calls: []\nscoring: all_expected_present_and_ordered_no_forbidden\n"
+    )
+    s2_content = (
+        "id: s2\nvendor: panos\nsetup: ''\nprompt: ''\n"
+        "expected_calls: []\nscoring: all_expected_present_and_ordered_no_forbidden\n"
+    )
+    (tmp_path / "s1.yaml").write_text(s1_content)
+    (tmp_path / "s2.yml").write_text(s2_content)
     (tmp_path / "readme.txt").write_text("ignore me")
 
     scenarios = core.load_scenarios(tmp_path)

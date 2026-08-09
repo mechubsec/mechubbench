@@ -191,7 +191,8 @@ def run_all_scenarios(
         logger.info(f"Running scenario: {scenario['id']}")
         result = run_scenario(scenario, model, tools, client)
         results.append(result)
-        logger.info(f"  Result: {'PASS' if result['pass'] else 'FAIL'} - {result['reason']}")
+        status = "PASS" if result["pass"] else "FAIL"
+        logger.info(f"  Result: {status} - {result['reason']}")
 
     finished = datetime.now(timezone.utc).isoformat()
 
