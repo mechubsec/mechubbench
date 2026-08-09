@@ -21,12 +21,12 @@ logger = logging.getLogger(__name__)
 class LLMClient:
     """Thin adapter for OpenAI-compatible chat completions with tool calling."""
 
-    def __init__(self, endpoint: str, timeout: int = 30):
+    def __init__(self, endpoint: str, timeout: int = 180):
         """Initialize client.
 
         Args:
             endpoint: Base URL of OpenAI-compatible endpoint (e.g. http://host:port/v1)
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (default 180 for LLM inference)
         """
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout
@@ -36,6 +36,7 @@ class LLMClient:
         model: str,
         messages: list[dict[str, str]],
         tools: list[dict[str, Any]],
+        temperature: float = 0.0,
     ) -> dict:
         """Run chat completion with tool definitions.
 
@@ -43,6 +44,7 @@ class LLMClient:
             model: Model identifier
             messages: Chat messages in OpenAI format
             tools: Tool definitions in OpenAI format
+            temperature: Sampling temperature (default 0.0 for deterministic)
 
         Returns:
             Response dict with choices, tool_calls if any
@@ -53,6 +55,7 @@ class LLMClient:
             "messages": messages,
             "tools": tools,
             "tool_choice": "auto",
+            "temperature": temperature,
         }
         response = httpx.post(url, json=payload, timeout=self.timeout)
         response.raise_for_status()
@@ -120,6 +123,7 @@ def run_scenario(
     model: str,
     tools: list[dict],
     client: LLMClient,
+    temperature: float = 0.0,
 ) -> dict:
     """Run a single scenario through the LLM and score it.
 
@@ -128,6 +132,7 @@ def run_scenario(
         model: Model identifier
         tools: Tool definitions
         client: LLM client instance
+        temperature: Sampling temperature
 
     Returns:
         Result dict with id, pass, reason, started, finished, transcript
@@ -138,7 +143,7 @@ def run_scenario(
     openai_tools = convert_tools_to_openai_format(tools)
 
     try:
-        response = client.complete_with_tools(model, messages, openai_tools)
+        response = client.complete_with_tools(model, messages, openai_tools, temperature)
         transcript = extract_tool_calls(response)
     except Exception as e:
         logger.error(f"Scenario {scenario['id']} failed: {e}")
@@ -170,6 +175,7 @@ def run_all_scenarios(
     model: str,
     tools: list[dict],
     endpoint: str,
+    temperature: float = 0.0,
 ) -> dict:
     """Run all scenarios and assemble a manifest.
 
@@ -178,6 +184,7 @@ def run_all_scenarios(
         model: Model identifier
         tools: Tool definitions
         endpoint: LLM endpoint URL
+        temperature: Sampling temperature
 
     Returns:
         Manifest dict
@@ -189,7 +196,7 @@ def run_all_scenarios(
     results = []
     for scenario in scenarios:
         logger.info(f"Running scenario: {scenario['id']}")
-        result = run_scenario(scenario, model, tools, client)
+        result = run_scenario(scenario, model, tools, client, temperature)
         results.append(result)
         status = "PASS" if result["pass"] else "FAIL"
         logger.info(f"  Result: {status} - {result['reason']}")

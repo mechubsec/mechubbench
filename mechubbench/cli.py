@@ -54,7 +54,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     # Run all scenarios
     logger.info(f"Running against model: {args.model}")
     logger.info(f"Endpoint: {args.endpoint}")
-    manifest = runner.run_all_scenarios(scenarios, args.model, tools, args.endpoint)
+    logger.info(f"Temperature: {args.temperature}")
+    manifest = runner.run_all_scenarios(
+        scenarios, args.model, tools, args.endpoint, args.temperature
+    )
 
     # Write manifest
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -152,6 +155,12 @@ def main() -> None:
         "--out",
         required=True,
         help="Output manifest path",
+    )
+    run_parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="Sampling temperature (default: 0.0 for deterministic)",
     )
     run_parser.set_defaults(func=cmd_run)
 
