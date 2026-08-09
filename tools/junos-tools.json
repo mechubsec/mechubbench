@@ -1,57 +1,164 @@
 [
   {
     "name": "get_junos_config",
-    "description": "Retrieve current Junos configuration from a device. PLACEHOLDER: replace with real export from rust-junosmcp in Task 3.",
+    "description": "Retrieve current Junos configuration from a device in text, set, or JSON format. Optionally filter to a specific configuration path.",
     "parameters": {
       "type": "object",
       "properties": {
         "device": {
           "type": "string",
-          "description": "Device hostname or identifier"
+          "description": "Device hostname or identifier from inventory"
         },
-        "format": {
+        "config_path": {
           "type": "string",
-          "enum": ["text", "set", "json"],
-          "description": "Configuration format"
+          "description": "Optional configuration hierarchy path to filter (e.g., 'security policies')"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Command timeout in seconds",
+          "default": 360
+        },
+        "max_lines": {
+          "type": "integer",
+          "description": "Cap output to at most N lines"
+        },
+        "max_bytes": {
+          "type": "integer",
+          "description": "Hard byte cap on returned output"
         }
       },
       "required": ["device"]
     }
   },
   {
-    "name": "prepare_change_set",
-    "description": "Stage a configuration change without applying it. PLACEHOLDER: replace with real export from rust-junosmcp in Task 3.",
+    "name": "junos_config_diff",
+    "description": "Show difference between candidate and running configuration for a device.",
     "parameters": {
       "type": "object",
       "properties": {
         "device": {
           "type": "string",
-          "description": "Device hostname or identifier"
+          "description": "Device hostname or identifier from inventory"
         },
-        "changes": {
-          "type": "string",
-          "description": "Configuration commands to stage"
+        "timeout": {
+          "type": "integer",
+          "description": "Command timeout in seconds",
+          "default": 360
         }
       },
-      "required": ["device", "changes"]
+      "required": ["device"]
     }
   },
   {
-    "name": "apply_change_set",
-    "description": "Commit a previously staged change set. PLACEHOLDER: replace with real export from rust-junosmcp in Task 3.",
+    "name": "create_junos_change_set",
+    "description": "Create a change set (plan) for multi-action configuration changes. Requires approval before application.",
     "parameters": {
       "type": "object",
       "properties": {
         "device": {
           "type": "string",
-          "description": "Device hostname or identifier"
+          "description": "Target device name from inventory"
         },
-        "change_set_id": {
+        "expected_fingerprint": {
           "type": "string",
-          "description": "ID of the staged change set"
+          "description": "Expected device fingerprint before applying. Application is rejected if device state changes after planning."
+        },
+        "actions": {
+          "type": "array",
+          "description": "List of configuration actions to stage",
+          "items": {
+            "type": "object",
+            "properties": {
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Configuration text in set or text format"
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": ["set", "text"],
+                    "description": "Configuration format"
+                  }
+                }
+              }
+            }
+          }
         }
       },
-      "required": ["device", "change_set_id"]
+      "required": ["device", "expected_fingerprint", "actions"]
+    }
+  },
+  {
+    "name": "approve_junos_change_set",
+    "description": "Approve a change set. Must be called by a different principal than the creator (two-person control).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "change_set_id": {
+          "type": "string",
+          "description": "Change-set ID returned by create"
+        },
+        "device": {
+          "type": "string",
+          "description": "Device name. Required because change sets are indexed by (id, device)."
+        },
+        "expected_digest": {
+          "type": "string",
+          "description": "Expected plan digest. Approver must confirm it matches what they reviewed."
+        }
+      },
+      "required": ["change_set_id", "device", "expected_digest"]
+    }
+  },
+  {
+    "name": "apply_junos_change_set",
+    "description": "Apply an approved change set to the device. Commits configuration changes to running config.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "change_set_id": {
+          "type": "string",
+          "description": "Change-set ID to apply"
+        },
+        "expected_digest": {
+          "type": "string",
+          "description": "Expected plan digest. Prevents applying a plan tampered with after approval."
+        },
+        "expected_fingerprint": {
+          "type": "string",
+          "description": "Expected device fingerprint at apply time. Apply is rejected if device changed after plan was created."
+        },
+        "device": {
+          "type": "string",
+          "description": "Target device from inventory"
+        },
+        "confirm_timeout_mins": {
+          "type": "integer",
+          "description": "Optional confirmed-commit window in whole minutes. Device schedules automatic rollback unless confirmed."
+        }
+      },
+      "required": ["change_set_id", "expected_digest", "expected_fingerprint", "device"]
+    }
+  },
+  {
+    "name": "rollback_config",
+    "description": "Rollback to a previous configuration version.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "device": {
+          "type": "string",
+          "description": "Device hostname or identifier from inventory"
+        },
+        "rollback_id": {
+          "type": "integer",
+          "description": "Rollback identifier (0-49, where 0 is previous, 1 is before that, etc.)",
+          "default": 0
+        }
+      },
+      "required": ["device"]
     }
   }
 ]

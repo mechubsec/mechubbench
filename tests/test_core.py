@@ -38,11 +38,11 @@ def test_load_scenarios_from_directory(tmp_path):
     """Load multiple scenarios from directory"""
     s1_content = (
         "id: s1\nvendor: junos\nsetup: ''\nprompt: ''\n"
-        "expected_calls: []\nscoring: all_expected_present_and_ordered_no_forbidden\n"
+        "expected_calls: []\nforbidden_calls: []\nscoring: all_expected_present_and_ordered_no_forbidden\n"
     )
     s2_content = (
         "id: s2\nvendor: panos\nsetup: ''\nprompt: ''\n"
-        "expected_calls: []\nscoring: all_expected_present_and_ordered_no_forbidden\n"
+        "expected_calls: []\nforbidden_calls: []\nscoring: all_expected_present_and_ordered_no_forbidden\n"
     )
     (tmp_path / "s1.yaml").write_text(s1_content)
     (tmp_path / "s2.yml").write_text(s2_content)
@@ -61,6 +61,7 @@ def test_validate_scenario_accepts_valid():
         "setup": "config here",
         "prompt": "task here",
         "expected_calls": [{"tool": "get_junos_config"}],
+        "forbidden_calls": [{"tool": "apply_junos_change_set"}],
         "scoring": "all_expected_present_and_ordered_no_forbidden",
     }
     schema_path = Path(__file__).parent.parent / "scenarios" / "schema.json"
@@ -82,7 +83,7 @@ def test_load_tools():
     """Load tool definitions from JSON"""
     tools_path = Path(__file__).parent.parent / "tools" / "junos-tools.json"
     tools = core.load_tools(tools_path)
-    assert len(tools) == 3
+    assert len(tools) == 6
     assert tools[0]["name"] == "get_junos_config"
 
 

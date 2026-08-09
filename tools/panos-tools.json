@@ -1,0 +1,141 @@
+[
+  {
+    "name": "get_panos_config",
+    "description": "Read running or candidate PAN-OS configuration under /config. Returns XML configuration data.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "device": {
+          "type": "string",
+          "description": "Exact inventory device name"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["running", "candidate"],
+          "description": "Running or candidate configuration; defaults to running",
+          "default": "running"
+        },
+        "xpath": {
+          "type": "string",
+          "description": "Optional XPath rooted at /config; defaults to /config"
+        },
+        "max_bytes": {
+          "type": "integer",
+          "description": "Optional returned-content cap; defaults to 524288 and cannot exceed 5242880"
+        },
+        "max_lines": {
+          "type": "integer",
+          "description": "Optional returned-line cap; defaults to 10000 and cannot exceed 100000"
+        }
+      },
+      "required": ["device"]
+    }
+  },
+  {
+    "name": "diff_panos_candidate",
+    "description": "Show difference between candidate and running configuration. Returns XML diff.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "device": {
+          "type": "string",
+          "description": "Exact inventory device name"
+        }
+      },
+      "required": ["device"]
+    }
+  },
+  {
+    "name": "create_panos_change_set",
+    "description": "Create a change set (plan) for multi-action PAN-OS configuration changes. Requires approval before application.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "device": {
+          "type": "string",
+          "description": "Exact inventory device"
+        },
+        "expected_candidate_fingerprint": {
+          "type": "string",
+          "description": "Candidate fingerprint to which this plan is bound"
+        },
+        "actions": {
+          "type": "array",
+          "description": "Ordered actions; all covered by one digest and approval",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": ["set", "delete"],
+                "description": "Set (merge XML) or delete"
+              },
+              "xpath": {
+                "type": "string",
+                "description": "Exact XPath within both inventory and token policy"
+              },
+              "element": {
+                "type": "string",
+                "description": "One XML element; required for set and forbidden for delete"
+              },
+              "destructive_confirmation": {
+                "type": "string",
+                "description": "For delete, must equal 'DELETE <xpath>' exactly"
+              }
+            },
+            "required": ["action", "xpath"]
+          }
+        }
+      },
+      "required": ["device", "expected_candidate_fingerprint", "actions"]
+    }
+  },
+  {
+    "name": "approve_panos_change_set",
+    "description": "Approve a PAN-OS change set. Must be called by a different principal than creator (two-person control).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "change_set_id": {
+          "type": "string",
+          "description": "Change-set ID returned by create"
+        },
+        "device": {
+          "type": "string",
+          "description": "Device name. Required because change sets are indexed by (id, device)."
+        },
+        "expected_digest": {
+          "type": "string",
+          "description": "Expected plan digest. Approver must confirm it matches what they reviewed."
+        }
+      },
+      "required": ["change_set_id", "device", "expected_digest"]
+    }
+  },
+  {
+    "name": "apply_panos_change_set",
+    "description": "Apply an approved PAN-OS change set to the device. Commits configuration changes.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "change_set_id": {
+          "type": "string",
+          "description": "Change-set ID to apply"
+        },
+        "expected_digest": {
+          "type": "string",
+          "description": "Expected plan digest. Prevents applying tampered plan."
+        },
+        "expected_candidate_fingerprint": {
+          "type": "string",
+          "description": "Expected candidate fingerprint at apply time. Rejected if candidate changed."
+        },
+        "device": {
+          "type": "string",
+          "description": "Target device from inventory"
+        }
+      },
+      "required": ["change_set_id", "expected_digest", "expected_candidate_fingerprint", "device"]
+    }
+  }
+]

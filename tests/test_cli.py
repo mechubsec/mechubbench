@@ -15,6 +15,8 @@ setup: "set system host-name test"
 prompt: "Check config"
 expected_calls:
   - tool: get_junos_config
+forbidden_calls:
+  - tool: apply_junos_change_set
 scoring: all_expected_present_and_ordered_no_forbidden
 """)
 
@@ -51,3 +53,45 @@ def test_lint_validates_real_scenario():
 
     result = cmd_lint(Args())
     assert result == 0
+
+
+def test_lint_rejects_missing_forbidden_calls(tmp_path):
+    """Lint rejects scenarios missing required forbidden_calls field."""
+    scenario_file = tmp_path / "bad.yaml"
+    scenario_file.write_text("""
+id: test-missing-forbidden
+vendor: junos
+setup: "test setup"
+prompt: "test prompt"
+expected_calls:
+  - tool: get_junos_config
+scoring: all_expected_present_and_ordered_no_forbidden
+""")
+
+    class Args:
+        scenarios = str(tmp_path)
+
+    result = cmd_lint(Args())
+    assert result == 1
+
+
+def test_lint_rejects_unknown_vendor(tmp_path):
+    """Lint rejects scenarios with unknown vendor values."""
+    scenario_file = tmp_path / "bad-vendor.yaml"
+    scenario_file.write_text("""
+id: test-unknown-vendor
+vendor: cisco-ios
+setup: "test setup"
+prompt: "test prompt"
+expected_calls:
+  - tool: some_tool
+forbidden_calls:
+  - tool: apply_change
+scoring: all_expected_present_and_ordered_no_forbidden
+""")
+
+    class Args:
+        scenarios = str(tmp_path)
+
+    result = cmd_lint(Args())
+    assert result == 1

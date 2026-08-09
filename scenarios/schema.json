@@ -3,7 +3,7 @@
   "title": "Benchmark Scenario",
   "description": "Schema for network-automation agent benchmark scenarios",
   "type": "object",
-  "required": ["id", "vendor", "setup", "prompt", "expected_calls", "scoring"],
+  "required": ["id", "vendor", "setup", "prompt", "expected_calls", "forbidden_calls", "scoring"],
   "properties": {
     "id": {
       "type": "string",
