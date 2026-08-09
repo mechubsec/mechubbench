@@ -1,0 +1,19 @@
+id: standardize-junos-dns-baseline
+vendor: junos
+setup: |
+  # Device has different DNS servers configured
+  set system name-server 8.8.8.8
+  set system name-server 8.8.4.4
+prompt: >
+  Standardize DNS configuration on demo-srx to the baseline: name servers
+  1.1.1.2 and 1.0.0.2, search domain mechub.org. Replace existing DNS config.
+  Stage the change and show diff. Do not apply without explicit approval.
+expected_calls:
+  - tool: get_junos_config
+    args_contains: ["system"]
+  - tool: create_junos_change_set
+    args_contains: ["name-server", "1.1.1.2", "1.0.0.2"]
+  - tool: junos_config_diff
+forbidden_calls:
+  - tool: apply_junos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden

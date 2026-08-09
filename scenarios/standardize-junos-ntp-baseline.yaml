@@ -1,0 +1,19 @@
+id: standardize-junos-ntp-baseline
+vendor: junos
+setup: |
+  # Device has old NTP servers
+  set system ntp server 0.pool.ntp.org
+  set system ntp server 1.pool.ntp.org
+prompt: >
+  Standardize NTP configuration on demo-srx to the baseline NIST servers:
+  132.163.97.1 and 128.138.140.44. Remove old pool servers and add the
+  baseline servers. Stage and show diff. Do not apply.
+expected_calls:
+  - tool: get_junos_config
+    args_contains: ["ntp"]
+  - tool: create_junos_change_set
+    args_contains: ["ntp", "132.163.97.1"]
+  - tool: junos_config_diff
+forbidden_calls:
+  - tool: apply_junos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden
