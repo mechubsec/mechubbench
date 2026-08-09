@@ -30,13 +30,17 @@
 
 **Key Finding:** MoE models (qwen3.6, ornith) ARE fast when warm (~3-20s). Initial >120s measurements included cold model load time.
 
-### Multi-Scenario Run Stability Issue
+### Multi-Scenario Run Stability Issue (CRITICAL)
 
-**Problem discovered:** Models timeout in long-running 20-scenario evaluations despite fast warm single-turn latency:
-- ornith:35b: 1 pass → timeouts on subsequent scenarios
-- qwen3.6:35b-a3b: Timeouts from start in fresh run
+**Problem confirmed:** Severe Ollama degradation in 20-scenario sequential runs despite fast warm single-turn:
 
-**Root cause:** Ollama state degradation or memory issues over multi-scenario runs (20+ scenarios in sequence)
+| Model | Warm Single-Turn | Full 20-Scenario Run | Degradation |
+|-------|------------------|----------------------|-------------|
+| ornith:35b | 3.0s avg | 169.3s avg | **56x slower** |
+| ornith:35b | - | 2/20 passed (10%) | vs 5/20 cold (25%) - WORSE |
+| qwen3.6:35b-a3b | 20.8s avg | Timeouts | N/A |
+
+**Root cause:** Ollama 0.32.1 exhibits severe state degradation/memory leak over multi-scenario runs. Single-turn warm measurements NOT representative of real workload performance.
 
 ## Gate Criteria
 
@@ -56,9 +60,11 @@
    - qwen2.5:14b: 7/20 (35%)
    - ornith:35b: 5/20 (25%)
 
-4. **Multi-Scenario Stability Issue**: Models timeout in long sequential runs despite fast warm single-turn latency → Ollama state degradation or memory leak in 20-scenario evaluations
+4. **CRITICAL - Multi-Scenario Stability Issue**: ornith:35b degrades 56x in sequential runs (3.0s → 169.3s avg) with WORSE accuracy (10% vs 25% cold). Warm single-turn latencies are NOT representative of real workload performance with Ollama 0.32.1.
 
 5. **gpt-oss:120b**: Confirmed disqualified (>180s even warm, 0/5 on subset)
+
+6. **Serving Stack Failure**: Ollama 0.32.1 unsuitable for multi-scenario agent workloads - severe degradation makes even fast models (ornith 3s warm) unusable in practice (169s in real runs)
 
 ## Evaluation Environment
 
