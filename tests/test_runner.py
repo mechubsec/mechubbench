@@ -418,7 +418,7 @@ class TestAgenticRunner:
         # First call returns change-set ID
         mock_mcp.call_tool.side_effect = [
             {"change_set_id": "cs-123", "status": "created"},  # create_junos_change_set
-            {"success": True},  # discard_candidate in teardown
+            {"success": True},  # rollback_config in teardown
         ]
 
         agentic_runner = runner.AgenticRunner(
@@ -429,12 +429,12 @@ class TestAgenticRunner:
 
         result = agentic_runner.run_scenario(scenario, "test-model", tools)
 
-        # Should have called create_junos_change_set and then discard_candidate
+        # Should have called create_junos_change_set and then rollback_config (to discard)
         assert mock_mcp.call_tool.call_count == 2
         calls = [call[0] for call in mock_mcp.call_tool.call_args_list]
         assert calls[0][0] == "create_junos_change_set"
-        assert calls[1][0] == "discard_candidate"
-        assert calls[1][1]["change_set_id"] == "cs-123"
+        assert calls[1][0] == "rollback_config"
+        assert calls[1][1] == {"device": "test-vsrx", "rollback_id": 0}
 
     def test_teardown_on_exception(self):
         """Change-sets are discarded even when scenario raises exception."""
@@ -489,8 +489,8 @@ class TestAgenticRunner:
         assert result["pass"] is False
         assert "runner_error" in result["reason"]
 
-        # But teardown should still discard the change-set
+        # But teardown should STILL discard the candidate (finally block)
         assert mock_mcp.call_tool.call_count == 2
         calls = [call[0] for call in mock_mcp.call_tool.call_args_list]
         assert calls[1][0] == "discard_panos_candidate"
-        assert calls[1][1]["change_set_id"] == "cs-456"
+        assert calls[1][1] == {"device": "test-pa"}

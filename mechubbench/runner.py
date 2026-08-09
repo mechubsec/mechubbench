@@ -273,26 +273,36 @@ class AgenticRunner:
                 "transcript": transcript,
             }
         finally:
-            # Safety rail: discard all created change-sets, even on error
+            # SAFETY RAIL: Discard all created change-sets, even on error paths
+            # (absolute requirement per brief: "every change-set discarded in teardown even on error")
             if change_set_ids:
                 vendor = scenario.get("vendor", "junos")
-                discard_tool = (
-                    "discard_panos_candidate" if vendor == "panos" else "discard_candidate"
-                )
-                logger.debug(
-                    f"Teardown: discarding {len(change_set_ids)} change-set(s) via {discard_tool}"
+                logger.info(
+                    f"Teardown: discarding {len(change_set_ids)} change-set(s) for {vendor} scenario {scenario['id']}"
                 )
 
                 for cs_id in change_set_ids:
                     try:
-                        self.mcp_client.call_tool(
-                            discard_tool, {"device": self.device, "change_set_id": cs_id}
-                        )
-                        logger.debug(f"Discarded change-set {cs_id}")
+                        if vendor == "panos":
+                            # PAN-OS: discard candidate config
+                            self.mcp_client.call_tool(
+                                "discard_panos_candidate",
+                                {"device": self.device}
+                            )
+                            logger.debug(f"Teardown: discarded PAN-OS candidate for change-set {cs_id}")
+                        elif vendor == "junos":
+                            # Junos: rollback to discard candidate (no explicit discard tool in MCP)
+                            self.mcp_client.call_tool(
+                                "rollback_config",
+                                {"device": self.device, "rollback_id": 0}
+                            )
+                            logger.debug(f"Teardown: rolled back Junos candidate for change-set {cs_id}")
+                        else:
+                            logger.warning(f"Teardown: unknown vendor '{vendor}', cannot discard change-set {cs_id}")
                     except Exception as teardown_error:
                         # Log teardown failures but don't propagate - scenario result already determined
                         logger.warning(
-                            f"Teardown failed for change-set {cs_id}: {teardown_error}"
+                            f"Teardown failed for change-set {cs_id} ({vendor}): {teardown_error}"
                         )
 
         # Score the realized transcript
