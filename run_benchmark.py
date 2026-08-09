@@ -21,7 +21,7 @@ MODELS = [
 
 # Configuration
 SCENARIOS_DIR = Path("scenarios")
-TOOLS_FILE = Path("tools/junos-tools.json")
+TOOLS_FILE = Path("tools/combined-tools.json")  # Combined Junos + PAN-OS tools
 RESULTS_DIR = Path("results")
 ENDPOINT = "http://inference.example.com:11434/v1"
 TEMPERATURE = 0.0

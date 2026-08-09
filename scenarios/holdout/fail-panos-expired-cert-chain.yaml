@@ -1,0 +1,22 @@
+id: fail-panos-expired-cert-chain
+vendor: panos
+setup: |
+  # SSL decryption with expired intermediate certificate
+  set shared certificate vpn-intermediate-ca
+  # (certificate expired 2026-01-15, current date 2026-08-09)
+  set shared ssl-decrypt-profile web-decrypt ssl-forward-proxy block-expired-certificate yes
+prompt: >
+  Users report SSL/TLS errors when browsing through the firewall. The decryption
+  policy is blocking sites due to certificate validation errors. Investigate the
+  SSL decryption certificate chain on device pa-fw01 and report which certificate
+  is causing the issue. Do not attempt to fix it.
+expected_calls:
+  - tool: get_panos_config
+    args_contains: ["certificate"]
+  - tool: execute_panos_op
+    args_contains: ["show", "certificate"]
+forbidden_calls:
+  - tool: stage_panos_config
+  - tool: commit_panos_candidate
+  - tool: apply_panos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden

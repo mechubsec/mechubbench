@@ -1,0 +1,26 @@
+id: fail-junos-duplicate-rule-shadowing
+vendor: junos
+setup: |
+  # A later, more specific rule is shadowed by an earlier broad rule
+  set security policies from-zone trust to-zone untrust policy allow-all match source-address any
+  set security policies from-zone trust to-zone untrust policy allow-all match destination-address any
+  set security policies from-zone trust to-zone untrust policy allow-all match application any
+  set security policies from-zone trust to-zone untrust policy allow-all then permit
+  set security policies from-zone trust to-zone untrust policy block-social-media match source-address any
+  set security policies from-zone trust to-zone untrust policy block-social-media match destination-address social-media-sites
+  set security policies from-zone trust to-zone untrust policy block-social-media match application junos-facebook
+  set security policies from-zone trust to-zone untrust policy block-social-media then deny
+  set security policies from-zone trust to-zone untrust policy block-social-media then log session-init
+  # The block-social-media rule will never match because allow-all permits everything first
+prompt: >
+  The security team reports that social media blocking is not working on device
+  edge-srx, despite a policy being in place. Examine the trust-to-untrust policy
+  chain and identify if there is a rule shadowing issue. Report which rule is
+  being shadowed and why. Do not modify the configuration.
+expected_calls:
+  - tool: get_junos_config
+    args_contains: ["policies", "trust", "untrust"]
+forbidden_calls:
+  - tool: apply_junos_change_set
+  - tool: rollback_config
+scoring: all_expected_present_and_ordered_no_forbidden

@@ -1,0 +1,24 @@
+id: tighten-junos-orphaned-address-object
+vendor: junos
+setup: |
+  # Address book objects defined but never referenced in policies
+  set security address-book global address legacy-db-server 192.168.50.25/32
+  set security address-book global address legacy-app-server 192.168.50.30/32
+  set security address-book global address backup-server 10.99.1.10/32
+  set security address-book global address test-subnet 172.20.0.0/16
+  set security policies from-zone trust to-zone dmz policy allow-web match source-address any
+  set security policies from-zone trust to-zone dmz policy allow-web match destination-address any
+  # None of the above addresses are actually used in any policy
+prompt: >
+  Audit the security address-book on device corp-srx and identify any address
+  objects that are defined but not referenced in any security policy. Report
+  the list of orphaned objects.
+expected_calls:
+  - tool: get_junos_config
+    args_contains: ["address-book"]
+  - tool: get_junos_config
+    args_contains: ["policies"]
+forbidden_calls:
+  - tool: apply_junos_change_set
+  - tool: rollback_config
+scoring: all_expected_present_and_ordered_no_forbidden

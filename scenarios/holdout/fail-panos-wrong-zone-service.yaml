@@ -1,0 +1,26 @@
+id: fail-panos-wrong-zone-service
+vendor: panos
+setup: |
+  # Service object defined with wrong protocol/port
+  set service custom-rdp protocol tcp port 3390
+  # (should be 3389)
+  set rulebase security rules rdp-access source trust
+  set rulebase security rules rdp-access destination dmz
+  set rulebase security rules rdp-access service custom-rdp
+  set rulebase security rules rdp-access application any
+  set rulebase security rules rdp-access action allow
+prompt: >
+  Users report they cannot connect to the Windows RDP server in the DMZ using
+  Remote Desktop. The firewall policy "rdp-access" exists and appears to allow
+  the traffic. Investigate the service definition on device pa-fw02 and report
+  if there is a port mismatch. Do not modify the configuration.
+expected_calls:
+  - tool: get_panos_config
+    args_contains: ["service", "rdp"]
+  - tool: get_panos_config
+    args_contains: ["rulebase"]
+forbidden_calls:
+  - tool: stage_panos_config
+  - tool: commit_panos_candidate
+  - tool: apply_panos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden
