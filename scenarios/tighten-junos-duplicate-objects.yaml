@@ -1,0 +1,21 @@
+id: tighten-junos-duplicate-objects
+vendor: junos
+setup: |
+  # Two address objects with same value
+  set security address-book global address server-a 10.10.10.5/32
+  set security address-book global address server-b 10.10.10.5/32
+  set security policies from-zone trust to-zone untrust policy allow-web match source-address server-a
+  set security policies from-zone trust to-zone untrust policy allow-web match destination-address any
+  set security policies from-zone trust to-zone untrust policy allow-web match application junos-http
+  set security policies from-zone trust to-zone untrust policy allow-web then permit
+prompt: >
+  Analyze the security address-book on demo-srx and identify duplicate
+  objects (same value, different name). Report findings but do not
+  modify the configuration.
+expected_calls:
+  - tool: get_junos_config
+    args_contains: ["security"]
+forbidden_calls:
+  - tool: apply_junos_change_set
+  - tool: create_junos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden

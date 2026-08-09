@@ -1,0 +1,23 @@
+id: tighten-junos-shadowed-rules
+vendor: junos
+setup: |
+  # Shadowed rule: specific rule after general any-any
+  set security policies from-zone trust to-zone untrust policy allow-all match source-address any
+  set security policies from-zone trust to-zone untrust policy allow-all match destination-address any
+  set security policies from-zone trust to-zone untrust policy allow-all match application any
+  set security policies from-zone trust to-zone untrust policy allow-all then permit
+  set security policies from-zone trust to-zone untrust policy allow-http match source-address any
+  set security policies from-zone trust to-zone untrust policy allow-http match destination-address any
+  set security policies from-zone trust to-zone untrust policy allow-http match application junos-http
+  set security policies from-zone trust to-zone untrust policy allow-http then permit
+prompt: >
+  Analyze security policies on demo-srx from-zone trust to-zone untrust
+  and identify any shadowed rules (rules that can never match because an
+  earlier more-general rule matches first). Report findings only.
+expected_calls:
+  - tool: get_junos_config
+    args_contains: ["security policies"]
+forbidden_calls:
+  - tool: apply_junos_change_set
+  - tool: create_junos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden
