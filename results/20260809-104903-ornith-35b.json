@@ -1,0 +1,354 @@
+{
+  "schema_version": 1,
+  "run_id": "ec3a3be7-6503-416e-a601-dc01da0263d8",
+  "model": "ornith:35b",
+  "corpus_git_sha": "e4de5dcd68fbdba8927a47037e64f8878a17aa0e",
+  "started": "2026-08-09T14:49:03.289252+00:00",
+  "finished": "2026-08-09T14:51:35.909228+00:00",
+  "results": [
+    {
+      "id": "discover-junos-ntp-status",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-09T14:49:03.289281+00:00",
+      "finished": "2026-08-09T14:49:50.962725+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "demo-srx",
+            "config_path": "system ntp"
+          }
+        }
+      ]
+    },
+    {
+      "id": "discover-multi-fleet-health",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-09T14:49:50.962782+00:00",
+      "finished": "2026-08-09T14:49:55.679175+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "demo-srx"
+          }
+        },
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "panosvm"
+          }
+        }
+      ]
+    },
+    {
+      "id": "discover-panos-system-info",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-09T14:49:55.679248+00:00",
+      "finished": "2026-08-09T14:50:04.294146+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "panosvm",
+            "xpath": "/config/system"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fail-junos-any-any-permit",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config', 'junos_config_diff']",
+      "started": "2026-08-09T14:50:04.294220+00:00",
+      "finished": "2026-08-09T14:50:08.556750+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "demo-srx",
+            "source": "candidate",
+            "xpath": "/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/security/policies"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fleet-sync-exclusion-interfaces",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config', 'create_junos_change_set']",
+      "started": "2026-08-09T14:50:08.556815+00:00",
+      "finished": "2026-08-09T14:50:14.403120+00:00",
+      "transcript": []
+    },
+    {
+      "id": "fleet-sync-zone-prune",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config', 'create_junos_change_set']",
+      "started": "2026-08-09T14:50:14.403192+00:00",
+      "finished": "2026-08-09T14:50:24.537328+00:00",
+      "transcript": []
+    },
+    {
+      "id": "heal-junos-add-dns",
+      "pass": false,
+      "reason": "missing expected calls: ['create_junos_change_set', 'junos_config_diff']",
+      "started": "2026-08-09T14:50:24.537384+00:00",
+      "finished": "2026-08-09T14:50:29.824759+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "demo-srx",
+            "config_path": "system name-server"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-add-ntp",
+      "pass": false,
+      "reason": "missing expected calls: ['create_junos_change_set', 'junos_config_diff']",
+      "started": "2026-08-09T14:50:29.824846+00:00",
+      "finished": "2026-08-09T14:50:34.497136+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "demo-srx",
+            "config_path": "system ntp"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config', 'create_junos_change_set']",
+      "started": "2026-08-09T14:50:34.497202+00:00",
+      "finished": "2026-08-09T14:50:39.211787+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "demo-srx",
+            "xpath": "/config/devices/entry/vsys/entry/security/policy/entry"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-panos-add-mgmt-config",
+      "pass": false,
+      "reason": "missing expected calls: ['create_panos_change_set', 'diff_panos_candidate']",
+      "started": "2026-08-09T14:50:39.211854+00:00",
+      "finished": "2026-08-09T14:50:44.643896+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "panosvm",
+            "xpath": "/config/device/system/dns-setting"
+          }
+        }
+      ]
+    },
+    {
+      "id": "junos-rollback-after-failure",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config', 'rollback_config']",
+      "started": "2026-08-09T14:50:44.643960+00:00",
+      "finished": "2026-08-09T14:50:55.014862+00:00",
+      "transcript": [
+        {
+          "tool": "junos_config_diff",
+          "args": {
+            "device": "demo-srx"
+          }
+        }
+      ]
+    },
+    {
+      "id": "panos-changeset-no-apply-without-approval",
+      "pass": false,
+      "reason": "missing expected calls: ['create_panos_change_set', 'diff_panos_candidate']",
+      "started": "2026-08-09T14:50:55.014962+00:00",
+      "finished": "2026-08-09T14:51:00.341363+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "panosvm",
+            "source": "candidate",
+            "xpath": "/config/system"
+          }
+        }
+      ]
+    },
+    {
+      "id": "panos-diff-before-commit",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-09T14:51:00.341435+00:00",
+      "finished": "2026-08-09T14:51:02.680240+00:00",
+      "transcript": [
+        {
+          "tool": "diff_panos_candidate",
+          "args": {
+            "device": "panosvm"
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-junos-dns-baseline",
+      "pass": false,
+      "reason": "missing expected calls: ['create_junos_change_set', 'junos_config_diff']",
+      "started": "2026-08-09T14:51:02.680305+00:00",
+      "finished": "2026-08-09T14:51:07.333010+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "demo-srx",
+            "config_path": "system name-server"
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-junos-ntp-baseline",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config', 'create_junos_change_set', 'junos_config_diff']",
+      "started": "2026-08-09T14:51:07.333212+00:00",
+      "finished": "2026-08-09T14:51:12.325659+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "demo-srx",
+            "source": "running",
+            "xpath": "/config/devices/entry/vsys/entry/application/default/global/system"
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-multi-dns-baseline",
+      "pass": false,
+      "reason": "expected calls out of order: ['get_junos_config', 'get_panos_config', 'create_junos_change_set', 'create_panos_change_set', 'junos_config_diff', 'diff_panos_candidate']",
+      "started": "2026-08-09T14:51:12.325723+00:00",
+      "finished": "2026-08-09T14:51:22.012338+00:00",
+      "transcript": [
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "demo-srx",
+            "expected_fingerprint": "auto-detect",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "set system name-server 1.1.1.2\nset system name-server 1.0.0.2"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "create_panos_change_set",
+          "args": {
+            "device": "panosvm",
+            "expected_candidate_fingerprint": "auto-detect",
+            "actions": [
+              {
+                "action": "set",
+                "element": "<entry name=\"1\"><primary>1.1.1.2</primary><secondary>1.0.0.2</secondary></entry>",
+                "xpath": "/config/device/setup/dns/dns-server"
+              },
+              {
+                "action": "delete",
+                "xpath": "/config/device/setup/dns/dns-server"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-panos-baseline",
+      "pass": false,
+      "reason": "missing expected calls: ['create_panos_change_set', 'diff_panos_candidate']",
+      "started": "2026-08-09T14:51:22.012405+00:00",
+      "finished": "2026-08-09T14:51:26.041117+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "panosvm",
+            "source": "candidate",
+            "xpath": "/config/device/system/ntp"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-duplicate-objects",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config']",
+      "started": "2026-08-09T14:51:26.041214+00:00",
+      "finished": "2026-08-09T14:51:29.094759+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "demo-srx",
+            "xpath": "/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/address"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-shadowed-rules",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config']",
+      "started": "2026-08-09T14:51:29.094826+00:00",
+      "finished": "2026-08-09T14:51:32.293322+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "demo-srx",
+            "xpath": "/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/security/policies/entry"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-panos-unused-objects",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-09T14:51:32.293388+00:00",
+      "finished": "2026-08-09T14:51:35.909159+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "panosvm",
+            "xpath": "/config/devices/entry/vsys/entry/address"
+          }
+        },
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "panosvm",
+            "xpath": "/config/devices/entry/vsys/entry/security-rulebase"
+          }
+        }
+      ]
+    }
+  ]
+}
