@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -51,13 +52,62 @@ def cmd_run(args: argparse.Namespace) -> int:
     tools = core.load_tools(tools_path)
     logger.info(f"Loaded {len(tools)} tool(s)")
 
-    # Run all scenarios
-    logger.info(f"Running against model: {args.model}")
-    logger.info(f"Endpoint: {args.endpoint}")
-    logger.info(f"Temperature: {args.temperature}")
-    manifest = runner.run_all_scenarios(
-        scenarios, args.model, tools, args.endpoint, args.temperature
-    )
+    # Check mode
+    if args.mode == "agentic":
+        # Get MCP token from args or environment
+        mcp_token = args.mcp_token or os.environ.get("RUSTJUNOSMCP_TOKEN")
+        if not mcp_token:
+            logger.error(
+                "Agentic mode requires --mcp-token (or RUSTJUNOSMCP_TOKEN env var)"
+            )
+            return 1
+
+        logger.info(f"Running in AGENTIC mode against real devices")
+        logger.info(f"MCP endpoint: {args.mcp_endpoint}")
+
+        # Get device list from MCP
+        mcp_client = runner.MCPClient(
+            endpoint=args.mcp_endpoint,
+            token=mcp_token,
+        )
+
+        try:
+            device_list_result = mcp_client.call_tool("get_router_list", {})
+            all_devices = device_list_result.get("routers", [])
+        except runner.MCPError as e:
+            logger.error(f"Failed to get device list from MCP: {e}")
+            return 1
+
+        # Filter to safe devices
+        safe_devices = runner.filter_safe_devices(all_devices)
+        if not safe_devices:
+            logger.error("No safe devices available (all filtered by prod/outpost exclusion)")
+            return 1
+
+        # Use first safe device
+        device = safe_devices[0]["name"]
+        logger.info(f"Selected device: {device} (from {len(safe_devices)} safe devices)")
+
+        manifest = runner.run_all_scenarios_agentic(
+            scenarios=scenarios,
+            model=args.model,
+            tools=tools,
+            endpoint=args.endpoint,
+            mcp_endpoint=args.mcp_endpoint,
+            mcp_token=mcp_token,
+            device=device,
+            temperature=args.temperature,
+            num_predict=args.num_predict,
+            keep_alive=args.keep_alive,
+        )
+    else:
+        # Blind mode (original single-pass)
+        logger.info(f"Running in BLIND mode (single-pass, no tool execution)")
+        logger.info(f"Endpoint: {args.endpoint}")
+        logger.info(f"Temperature: {args.temperature}")
+        manifest = runner.run_all_scenarios(
+            scenarios, args.model, tools, args.endpoint, args.temperature
+        )
 
     # Write manifest
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,6 +211,33 @@ def main() -> None:
         type=float,
         default=0.0,
         help="Sampling temperature (default: 0.0 for deterministic)",
+    )
+    run_parser.add_argument(
+        "--mode",
+        choices=["blind", "agentic"],
+        default="blind",
+        help="Runner mode: 'blind' (single-pass, no execution) or 'agentic' (multi-turn with real tool execution via MCP)",
+    )
+    run_parser.add_argument(
+        "--mcp-endpoint",
+        default="http://198.51.100.194:30031/mcp",
+        help="MCP endpoint URL for agentic mode (default: http://198.51.100.194:30031/mcp)",
+    )
+    run_parser.add_argument(
+        "--mcp-token",
+        default=None,
+        help="MCP bearer token (or set RUSTJUNOSMCP_TOKEN env var)",
+    )
+    run_parser.add_argument(
+        "--num-predict",
+        type=int,
+        default=None,
+        help="Max tokens to predict (Ollama-specific, prevents runaway generations)",
+    )
+    run_parser.add_argument(
+        "--keep-alive",
+        default="30m",
+        help="Ollama keep-alive duration (default: 30m)",
     )
     run_parser.set_defaults(func=cmd_run)
 
