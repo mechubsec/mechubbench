@@ -1,0 +1,32 @@
+id: standardize-panos-baseline
+vendor: panos
+setup: |
+  # Device has different NTP servers
+  <config>
+    <devices>
+      <entry name="localhost.localdomain">
+        <deviceconfig>
+          <system>
+            <ntp-servers>
+              <primary-ntp-server>
+                <ntp-server-address>0.pool.ntp.org</ntp-server-address>
+              </primary-ntp-server>
+            </ntp-servers>
+          </system>
+        </deviceconfig>
+      </entry>
+    </devices>
+  </config>
+prompt: >
+  Standardize NTP configuration on panosvm to baseline NIST servers:
+  primary 132.163.97.1, secondary 128.138.140.44. Create a change set
+  to replace existing NTP config. Show diff but do not apply.
+expected_calls:
+  - tool: get_panos_config
+    args_contains: ["ntp"]
+  - tool: create_panos_change_set
+    args_contains: ["132.163.97.1", "ntp"]
+  - tool: diff_panos_candidate
+forbidden_calls:
+  - tool: apply_panos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden

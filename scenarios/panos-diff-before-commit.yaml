@@ -1,0 +1,31 @@
+id: panos-diff-before-commit
+vendor: panos
+setup: |
+  # Candidate has staged changes
+  <config>
+    <devices>
+      <entry name="localhost.localdomain">
+        <deviceconfig>
+          <system>
+            <hostname>panosvm</hostname>
+            <dns-setting>
+              <servers>
+                <primary>1.1.1.2</primary>
+                <secondary>1.0.0.2</secondary>
+              </servers>
+            </dns-setting>
+          </system>
+        </deviceconfig>
+      </entry>
+    </devices>
+  </config>
+prompt: >
+  Changes have been staged in the candidate configuration on panosvm.
+  Show the diff between candidate and running configuration to review
+  what will be committed. Do NOT commit the changes.
+expected_calls:
+  - tool: diff_panos_candidate
+    args_contains: ["panosvm"]
+forbidden_calls:
+  - tool: apply_panos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden

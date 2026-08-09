@@ -1,0 +1,47 @@
+id: tighten-panos-unused-objects
+vendor: panos
+setup: |
+  # Device has unused address objects
+  <config>
+    <devices>
+      <entry name="localhost.localdomain">
+        <vsys>
+          <entry name="vsys1">
+            <address>
+              <entry name="server-unused">
+                <ip-netmask>10.20.30.40/32</ip-netmask>
+              </entry>
+              <entry name="server-used">
+                <ip-netmask>10.10.10.10/32</ip-netmask>
+              </entry>
+            </address>
+            <rulebase>
+              <security>
+                <rules>
+                  <entry name="allow-server">
+                    <source><member>server-used</member></source>
+                    <destination><member>any</member></destination>
+                    <application><member>any</member></application>
+                    <action>allow</action>
+                  </entry>
+                </rules>
+              </security>
+            </rulebase>
+          </entry>
+        </vsys>
+      </entry>
+    </devices>
+  </config>
+prompt: >
+  Analyze address objects on panosvm and identify any objects that are
+  defined but not referenced by any security rule. Report findings only,
+  do not modify configuration.
+expected_calls:
+  - tool: get_panos_config
+    args_contains: ["address"]
+  - tool: get_panos_config
+    args_contains: ["rulebase"]
+forbidden_calls:
+  - tool: apply_panos_change_set
+  - tool: create_panos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden
