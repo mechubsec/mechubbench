@@ -176,6 +176,7 @@ class AgenticRunner:
         """
         started = datetime.now(timezone.utc).isoformat()
         transcript = []
+        change_set_ids = []  # Track created change-sets for teardown
 
         messages = [{"role": "user", "content": scenario["prompt"]}]
         openai_tools = convert_tools_to_openai_format(tools)
@@ -225,6 +226,11 @@ class AgenticRunner:
                         # Execute via MCP
                         try:
                             tool_result = self.mcp_client.call_tool(tool_name, tool_args)
+
+                            # Track change-set IDs for teardown
+                            if tool_name in ("create_junos_change_set", "create_panos_change_set"):
+                                if isinstance(tool_result, dict) and "change_set_id" in tool_result:
+                                    change_set_ids.append(tool_result["change_set_id"])
                         except MCPError as e:
                             logger.error(f"MCP error executing {tool_name}: {e}")
                             tool_result = {"error": str(e)}
@@ -266,6 +272,28 @@ class AgenticRunner:
                 "finished": finished,
                 "transcript": transcript,
             }
+        finally:
+            # Safety rail: discard all created change-sets, even on error
+            if change_set_ids:
+                vendor = scenario.get("vendor", "junos")
+                discard_tool = (
+                    "discard_panos_candidate" if vendor == "panos" else "discard_candidate"
+                )
+                logger.debug(
+                    f"Teardown: discarding {len(change_set_ids)} change-set(s) via {discard_tool}"
+                )
+
+                for cs_id in change_set_ids:
+                    try:
+                        self.mcp_client.call_tool(
+                            discard_tool, {"device": self.device, "change_set_id": cs_id}
+                        )
+                        logger.debug(f"Discarded change-set {cs_id}")
+                    except Exception as teardown_error:
+                        # Log teardown failures but don't propagate - scenario result already determined
+                        logger.warning(
+                            f"Teardown failed for change-set {cs_id}: {teardown_error}"
+                        )
 
         # Score the realized transcript
         score_result = scoring.score_scenario(scenario, transcript)

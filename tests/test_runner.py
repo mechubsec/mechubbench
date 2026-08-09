@@ -372,3 +372,125 @@ class TestAgenticRunner:
         assert result["transcript"][0]["tool"] == "approve_panos_change_set"
         assert result["pass"] is False
         assert "forbidden" in result["reason"]
+
+    def test_teardown_discards_change_sets(self):
+        """Change-sets created during run are discarded in teardown."""
+        scenario = {
+            "id": "test-teardown",
+            "vendor": "junos",
+            "prompt": "Create and test a change",
+            "expected_calls": [
+                {"tool": "create_junos_change_set"},
+            ],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"config": "set test"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            },
+        ]
+
+        mock_mcp = Mock()
+        # First call returns change-set ID
+        mock_mcp.call_tool.side_effect = [
+            {"change_set_id": "cs-123", "status": "created"},  # create_junos_change_set
+            {"success": True},  # discard_candidate in teardown
+        ]
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-vsrx",
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should have called create_junos_change_set and then discard_candidate
+        assert mock_mcp.call_tool.call_count == 2
+        calls = [call[0] for call in mock_mcp.call_tool.call_args_list]
+        assert calls[0][0] == "create_junos_change_set"
+        assert calls[1][0] == "discard_candidate"
+        assert calls[1][1]["change_set_id"] == "cs-123"
+
+    def test_teardown_on_exception(self):
+        """Change-sets are discarded even when scenario raises exception."""
+        scenario = {
+            "id": "test-exception",
+            "vendor": "panos",
+            "prompt": "Create a change",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = [
+            {"name": "create_panos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        # First call succeeds, second raises exception
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_panos_change_set",
+                                "arguments": '{}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            Exception("LLM error"),  # Turn 2: exception
+        ]
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.side_effect = [
+            {"change_set_id": "cs-456", "status": "created"},  # create_panos_change_set
+            {"success": True},  # discard_panos_candidate in teardown
+        ]
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-pa",
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Scenario should fail with runner_error
+        assert result["pass"] is False
+        assert "runner_error" in result["reason"]
+
+        # But teardown should still discard the change-set
+        assert mock_mcp.call_tool.call_count == 2
+        calls = [call[0] for call in mock_mcp.call_tool.call_args_list]
+        assert calls[1][0] == "discard_panos_candidate"
+        assert calls[1][1]["change_set_id"] == "cs-456"
