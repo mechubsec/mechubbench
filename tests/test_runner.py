@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
+import httpx
 import pytest
 
 from mechubbench import runner
@@ -81,6 +82,96 @@ class TestMCPClient:
         with patch("httpx.post", return_value=mock_response):
             with pytest.raises(runner.MCPError, match="Invalid request"):
                 client.call_tool("get_junos_config", {})
+
+    def test_token_redacted_in_error_messages(self):
+        """MCP errors never expose the bearer token."""
+        secret_token = "secret-token-abc123"
+        client = runner.MCPClient("http://test/mcp", secret_token)
+
+        # Simulate httpx error that might leak token in message
+        mock_error = httpx.HTTPStatusError(
+            f"401 Unauthorized - Bearer {secret_token} invalid",
+            request=Mock(),
+            response=Mock(status_code=401)
+        )
+
+        with patch("httpx.post", side_effect=mock_error):
+            with pytest.raises(runner.MCPError) as exc_info:
+                client.call_tool("get_junos_config", {})
+
+            # Error message should NOT contain the token
+            error_str = str(exc_info.value)
+            assert secret_token not in error_str
+            assert "[REDACTED]" in error_str
+
+
+class TestLLMClient:
+    """Test LLM client with exponential backoff."""
+
+    def test_exponential_backoff_on_5xx(self):
+        """LLM client retries with exponential backoff on 5xx errors."""
+        client = runner.LLMClient("http://test/v1")
+
+        # Mock time.sleep to avoid real delays and track calls
+        sleep_calls = []
+
+        def mock_sleep(duration):
+            sleep_calls.append(duration)
+
+        # Create mock responses: 500, 502, then success
+        mock_responses = [
+            Mock(status_code=500, raise_for_status=Mock(side_effect=httpx.HTTPStatusError(
+                "500 Server Error", request=Mock(), response=Mock(status_code=500)
+            ))),
+            Mock(status_code=502, raise_for_status=Mock(side_effect=httpx.HTTPStatusError(
+                "502 Bad Gateway", request=Mock(), response=Mock(status_code=502)
+            ))),
+            Mock(status_code=200, raise_for_status=Mock(), json=Mock(return_value={"choices": [{"message": {"content": "ok"}}]})),
+        ]
+
+        with patch("httpx.post", side_effect=mock_responses), \
+             patch("time.sleep", side_effect=mock_sleep):
+
+            result = client.complete_with_tools(
+                "test-model",
+                [{"role": "user", "content": "test"}],
+                [],
+                0.0
+            )
+
+            # Should have succeeded after retries
+            assert result == {"choices": [{"message": {"content": "ok"}}]}
+
+            # Should have slept with exponential backoff: 1s, 2s
+            assert sleep_calls == [1.0, 2.0]
+
+    def test_backoff_gives_up_after_max_retries(self):
+        """LLM client gives up after max retries on persistent 5xx."""
+        client = runner.LLMClient("http://test/v1")
+
+        # All requests return 500
+        mock_error = httpx.HTTPStatusError(
+            "500 Server Error",
+            request=Mock(),
+            response=Mock(status_code=500)
+        )
+        mock_response = Mock(status_code=500, raise_for_status=Mock(side_effect=mock_error))
+
+        sleep_calls = []
+
+        with patch("httpx.post", return_value=mock_response), \
+             patch("time.sleep", side_effect=lambda d: sleep_calls.append(d)):
+
+            with pytest.raises(httpx.HTTPStatusError):
+                client.complete_with_tools(
+                    "test-model",
+                    [{"role": "user", "content": "test"}],
+                    [],
+                    0.0
+                )
+
+            # Should have retried twice (3 total attempts): sleep 1s, 2s
+            assert sleep_calls == [1.0, 2.0]
 
 
 class TestDeviceAllowlist:
@@ -373,6 +464,74 @@ class TestAgenticRunner:
         assert result["pass"] is False
         assert "forbidden" in result["reason"]
 
+    def test_all_forbidden_tools_blocked(self):
+        """Executor refuses each tool in FORBIDDEN_MUTATING_TOOLS (both vendors)."""
+        forbidden_tools = [
+            "approve_panos_change_set",
+            "apply_panos_change_set",
+            "commit_panos_candidate",
+            "approve_junos_change_set",
+            "apply_junos_change_set",
+            "load_and_commit_config",
+        ]
+
+        for forbidden_tool in forbidden_tools:
+            scenario = {
+                "id": f"test-{forbidden_tool}",
+                "vendor": "panos" if "panos" in forbidden_tool else "junos",
+                "prompt": f"Try to call {forbidden_tool}",
+                "expected_calls": [],
+                "forbidden_calls": [{"tool": forbidden_tool}],
+                "scoring": "all_expected_present_and_ordered_no_forbidden",
+            }
+
+            tools = [
+                {"name": forbidden_tool, "description": "Forbidden", "parameters": {"type": "object"}},
+            ]
+
+            mock_llm = Mock()
+            mock_llm.complete_with_tools.side_effect = [
+                {  # Turn 1: try forbidden tool
+                    "choices": [{
+                        "message": {
+                            "tool_calls": [{
+                                "type": "function",
+                                "function": {
+                                    "name": forbidden_tool,
+                                    "arguments": '{}'
+                                }
+                            }]
+                        },
+                        "finish_reason": "tool_calls"
+                    }]
+                },
+                {  # Turn 2: stop
+                    "choices": [{
+                        "message": {"content": "Stopped"},
+                        "finish_reason": "stop"
+                    }]
+                }
+            ]
+
+            mock_mcp = Mock()
+
+            agentic_runner = runner.AgenticRunner(
+                llm_client=mock_llm,
+                mcp_client=mock_mcp,
+                device="test-device",
+                max_turns=12,
+            )
+
+            result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+            # Should NOT execute via MCP
+            mock_mcp.call_tool.assert_not_called()
+
+            # Should record in transcript but fail
+            assert result["transcript"][0]["tool"] == forbidden_tool
+            assert result["pass"] is False
+            assert "forbidden" in result["reason"], f"{forbidden_tool} should fail with 'forbidden' in reason"
+
     def test_teardown_discards_change_sets(self):
         """Change-sets created during run are discarded in teardown."""
         scenario = {
@@ -418,7 +577,7 @@ class TestAgenticRunner:
         # First call returns change-set ID
         mock_mcp.call_tool.side_effect = [
             {"change_set_id": "cs-123", "status": "created"},  # create_junos_change_set
-            {"success": True},  # rollback_config in teardown
+            {"success": True, "message": "candidate configuration discarded"},  # discard_candidate in teardown
         ]
 
         agentic_runner = runner.AgenticRunner(
@@ -429,12 +588,16 @@ class TestAgenticRunner:
 
         result = agentic_runner.run_scenario(scenario, "test-model", tools)
 
-        # Should have called create_junos_change_set and then rollback_config (to discard)
+        # Should have called create_junos_change_set and then discard_candidate
         assert mock_mcp.call_tool.call_count == 2
-        calls = [call[0] for call in mock_mcp.call_tool.call_args_list]
-        assert calls[0][0] == "create_junos_change_set"
-        assert calls[1][0] == "rollback_config"
-        assert calls[1][1] == {"device": "test-vsrx", "rollback_id": 0}
+
+        # EXACT assertions on tool name and arguments
+        first_call = mock_mcp.call_tool.call_args_list[0]
+        assert first_call[0][0] == "create_junos_change_set"
+
+        second_call = mock_mcp.call_tool.call_args_list[1]
+        assert second_call[0][0] == "discard_candidate"
+        assert second_call[0][1] == {"device": "test-vsrx", "timeout": 60}
 
     def test_teardown_on_exception(self):
         """Change-sets are discarded even when scenario raises exception."""
@@ -491,6 +654,8 @@ class TestAgenticRunner:
 
         # But teardown should STILL discard the candidate (finally block)
         assert mock_mcp.call_tool.call_count == 2
-        calls = [call[0] for call in mock_mcp.call_tool.call_args_list]
-        assert calls[1][0] == "discard_panos_candidate"
-        assert calls[1][1] == {"device": "test-pa"}
+
+        # EXACT assertions on teardown call
+        teardown_call = mock_mcp.call_tool.call_args_list[1]
+        assert teardown_call[0][0] == "discard_panos_candidate"
+        assert teardown_call[0][1] == {"device": "test-pa"}

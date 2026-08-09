@@ -75,7 +75,11 @@ class MCPClient:
             )
             response.raise_for_status()
         except httpx.HTTPError as e:
-            raise MCPError(f"HTTP error calling {tool_name}: {e}")
+            # Redact token from error message (httpx may include request details)
+            error_msg = str(e)
+            if self.token in error_msg:
+                error_msg = error_msg.replace(self.token, "[REDACTED]")
+            raise MCPError(f"HTTP error calling {tool_name}: {error_msg}")
 
         data = response.json()
 
@@ -122,10 +126,13 @@ class AgenticRunner:
     """Agentic loop runner: executes tool calls against real devices via MCP."""
 
     # Hard-coded safety rail: tools that must never be executed
+    # Covers BOTH vendors' approve/apply/commit surface
     FORBIDDEN_MUTATING_TOOLS = {
         "approve_panos_change_set",
         "apply_panos_change_set",
         "commit_panos_candidate",
+        "approve_junos_change_set",
+        "apply_junos_change_set",
         "load_and_commit_config",
     }
 
@@ -291,12 +298,12 @@ class AgenticRunner:
                             )
                             logger.debug(f"Teardown: discarded PAN-OS candidate for change-set {cs_id}")
                         elif vendor == "junos":
-                            # Junos: rollback to discard candidate (no explicit discard tool in MCP)
+                            # Junos: discard candidate config (explicit tool exists)
                             self.mcp_client.call_tool(
-                                "rollback_config",
-                                {"device": self.device, "rollback_id": 0}
+                                "discard_candidate",
+                                {"device": self.device, "timeout": 60}
                             )
-                            logger.debug(f"Teardown: rolled back Junos candidate for change-set {cs_id}")
+                            logger.debug(f"Teardown: discarded Junos candidate for change-set {cs_id}")
                         else:
                             logger.warning(f"Teardown: unknown vendor '{vendor}', cannot discard change-set {cs_id}")
                     except Exception as teardown_error:
@@ -365,8 +372,8 @@ class OllamaHealthProbe:
             # (Ollama /api/ps doesn't expose this cleanly, so we just wait a bit)
             time.sleep(2.0)
 
-        # After timeout, log warning but don't fail
-        logger.warning(f"Ollama settle wait timed out after {timeout}s")
+        # After timeout, raise error (scenario will fail with structured error)
+        raise TimeoutError(f"Ollama failed to settle after {timeout}s")
 
 
 class LLMClient:
@@ -429,10 +436,23 @@ class LLMClient:
         if self.keep_alive is not None:
             payload["keep_alive"] = self.keep_alive
 
-        # Hard timeout with cancellation potential
-        response = httpx.post(url, json=payload, timeout=self.timeout)
-        response.raise_for_status()
-        return response.json()
+        # Exponential backoff on 5xx errors
+        max_retries = 3
+        base_delay = 1.0
+
+        for attempt in range(max_retries):
+            try:
+                response = httpx.post(url, json=payload, timeout=self.timeout)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                # Retry on 5xx server errors
+                if e.response.status_code >= 500 and attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                    logger.warning(f"LLM server error {e.response.status_code}, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                    continue
+                raise
 
 
 def convert_tools_to_openai_format(tools: list[dict]) -> list[dict]:
@@ -667,8 +687,21 @@ def run_all_scenarios_agentic(
             logger.debug("Waiting for Ollama to settle...")
             try:
                 health_probe.wait_for_settle(timeout=10.0)
+            except TimeoutError as e:
+                # Settle timeout is a structured failure - fail the scenario
+                logger.error(f"Ollama settle timeout before scenario {scenario['id']}: {e}")
+                result = {
+                    "id": scenario["id"],
+                    "pass": False,
+                    "reason": f"ollama_settle_timeout: {e}",
+                    "started": datetime.now(timezone.utc).isoformat(),
+                    "finished": datetime.now(timezone.utc).isoformat(),
+                    "transcript": [],
+                }
+                results.append(result)
+                continue
             except Exception as e:
-                logger.warning(f"Health probe failed: {e}")
+                logger.warning(f"Health probe non-timeout failure: {e}")
 
         # Run scenario
         result = agentic_runner.run_scenario(scenario, model, tools, temperature)
