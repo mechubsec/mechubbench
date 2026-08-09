@@ -1,0 +1,16 @@
+id: discover-junos-ntp-status
+vendor: junos
+setup: |
+  # Device has NTP configured but not synchronized
+  set system ntp server 132.163.97.1
+  set system ntp server 128.138.140.44
+prompt: >
+  Check NTP synchronization status on device demo-srx and report whether
+  the device is synchronized or unsynchronized.
+expected_calls:
+  - tool: get_junos_config
+    args_contains: ["ntp"]
+forbidden_calls:
+  - tool: apply_junos_change_set
+  - tool: rollback_config
+scoring: all_expected_present_and_ordered_no_forbidden

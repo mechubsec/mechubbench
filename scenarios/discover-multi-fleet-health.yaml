@@ -1,0 +1,33 @@
+id: discover-multi-fleet-health
+vendor: multi
+setup: |
+  # Junos device
+  set system host-name demo-srx
+  set system name-server 1.1.1.2
+  # PAN-OS device
+  <config>
+    <devices>
+      <entry name="localhost.localdomain">
+        <deviceconfig>
+          <system>
+            <hostname>panosvm</hostname>
+          </system>
+        </deviceconfig>
+      </entry>
+    </devices>
+  </config>
+prompt: >
+  Gather basic health information from both demo-srx (Junos) and panosvm
+  (PAN-OS): hostname, software version, and DNS configuration status.
+  Report findings for both devices. Do not modify any configuration.
+expected_calls:
+  - tool: get_junos_config
+    args_contains: ["demo-srx"]
+  - tool: get_panos_config
+    args_contains: ["panosvm"]
+forbidden_calls:
+  - tool: apply_junos_change_set
+  - tool: apply_panos_change_set
+  - tool: create_junos_change_set
+  - tool: create_panos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden

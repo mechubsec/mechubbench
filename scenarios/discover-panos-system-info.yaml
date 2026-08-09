@@ -1,0 +1,15 @@
+id: discover-panos-system-info
+vendor: panos
+setup: |
+  # Device has baseline config
+  # Software version and uptime will be gathered via operational commands
+prompt: >
+  Gather system information from PAN-OS device panosvm including software
+  version, uptime, and hostname. Use operational commands only.
+expected_calls:
+  - tool: get_panos_config
+    args_contains: ["panosvm"]
+forbidden_calls:
+  - tool: apply_panos_change_set
+  - tool: create_panos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden
