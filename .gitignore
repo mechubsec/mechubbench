@@ -44,3 +44,4 @@ Thumbs.db
 # Project-specific
 manifests/
 *.manifest.json
+.venv/
