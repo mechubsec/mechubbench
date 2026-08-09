@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "run_id": "1c837345-4dd0-45fb-984b-066908bbb3f3",
+  "model": "qwen3.6:35b-a3b",
+  "corpus_git_sha": "16b7ddcc9041238eae9c2ab01ad62290e5b47269",
+  "started": "2026-08-09T15:02:44.842016+00:00",
+  "finished": "2026-08-09T16:01:02.664302+00:00",
+  "results": [
+    {
+      "id": "discover-junos-ntp-status",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:02:44.842037+00:00",
+      "finished": "2026-08-09T15:05:44.969432+00:00",
+      "transcript": []
+    },
+    {
+      "id": "discover-multi-fleet-health",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:05:44.969481+00:00",
+      "finished": "2026-08-09T15:08:45.055524+00:00",
+      "transcript": []
+    },
+    {
+      "id": "discover-panos-system-info",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:08:45.055578+00:00",
+      "finished": "2026-08-09T15:11:45.147092+00:00",
+      "transcript": []
+    },
+    {
+      "id": "fail-junos-any-any-permit",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:11:45.147138+00:00",
+      "finished": "2026-08-09T15:14:45.173317+00:00",
+      "transcript": []
+    },
+    {
+      "id": "fleet-sync-exclusion-interfaces",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:14:45.173363+00:00",
+      "finished": "2026-08-09T15:17:45.272329+00:00",
+      "transcript": []
+    },
+    {
+      "id": "fleet-sync-zone-prune",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:17:45.272379+00:00",
+      "finished": "2026-08-09T15:20:45.377390+00:00",
+      "transcript": []
+    },
+    {
+      "id": "heal-junos-add-dns",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:20:45.377436+00:00",
+      "finished": "2026-08-09T15:23:45.483050+00:00",
+      "transcript": []
+    },
+    {
+      "id": "heal-junos-add-ntp",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:23:45.483090+00:00",
+      "finished": "2026-08-09T15:26:45.588367+00:00",
+      "transcript": []
+    },
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config', 'create_junos_change_set']",
+      "started": "2026-08-09T15:26:45.588413+00:00",
+      "finished": "2026-08-09T15:29:35.599188+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "demo-srx",
+            "xpath": "/config/devices/entry/vsys/entry/rulebase/security/rules"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-panos-add-mgmt-config",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:29:35.599242+00:00",
+      "finished": "2026-08-09T15:32:35.642497+00:00",
+      "transcript": []
+    },
+    {
+      "id": "junos-rollback-after-failure",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:32:35.642544+00:00",
+      "finished": "2026-08-09T15:35:35.701891+00:00",
+      "transcript": []
+    },
+    {
+      "id": "panos-changeset-no-apply-without-approval",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:35:35.701931+00:00",
+      "finished": "2026-08-09T15:38:35.737953+00:00",
+      "transcript": []
+    },
+    {
+      "id": "panos-diff-before-commit",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-09T15:38:35.737999+00:00",
+      "finished": "2026-08-09T15:41:08.006200+00:00",
+      "transcript": [
+        {
+          "tool": "diff_panos_candidate",
+          "args": {
+            "device": "panosvm"
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-junos-dns-baseline",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:41:08.006259+00:00",
+      "finished": "2026-08-09T15:44:08.018606+00:00",
+      "transcript": []
+    },
+    {
+      "id": "standardize-junos-ntp-baseline",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config', 'create_junos_change_set', 'junos_config_diff']",
+      "started": "2026-08-09T15:44:08.018651+00:00",
+      "finished": "2026-08-09T15:46:41.863267+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "demo-srx",
+            "xpath": "/config/devices/entry/vsys/entry/ntp"
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-multi-dns-baseline",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:46:41.863326+00:00",
+      "finished": "2026-08-09T15:49:41.968384+00:00",
+      "transcript": []
+    },
+    {
+      "id": "standardize-panos-baseline",
+      "pass": false,
+      "reason": "missing expected calls: ['create_panos_change_set', 'diff_panos_candidate']",
+      "started": "2026-08-09T15:49:41.968429+00:00",
+      "finished": "2026-08-09T15:52:18.516304+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "panosvm",
+            "xpath": "/config/devices/entry/vsys/entry/ntp"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-duplicate-objects",
+      "pass": false,
+      "reason": "missing expected calls: ['get_junos_config']",
+      "started": "2026-08-09T15:52:18.516363+00:00",
+      "finished": "2026-08-09T15:55:03.723373+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "demo-srx",
+            "xpath": "/config/devices/entry/vsys/entry/address/object"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-shadowed-rules",
+      "pass": false,
+      "reason": "llm_error: timed out",
+      "started": "2026-08-09T15:55:03.723431+00:00",
+      "finished": "2026-08-09T15:58:03.762946+00:00",
+      "transcript": []
+    },
+    {
+      "id": "tighten-panos-unused-objects",
+      "pass": false,
+      "reason": "expected calls out of order: ['get_panos_config']",
+      "started": "2026-08-09T15:58:03.762992+00:00",
+      "finished": "2026-08-09T16:01:02.664259+00:00",
+      "transcript": [
+        {
+          "tool": "get_panos_config",
+          "args": {
+            "device": "panosvm",
+            "xpath": "/config/devices/entry/vsys/entry/address"
+          }
+        }
+      ]
+    }
+  ]
+}
