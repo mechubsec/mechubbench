@@ -1,0 +1,21 @@
+id: fleet-sync-exclusion-interfaces
+vendor: junos
+setup: |
+  # Source device with interface config
+  set interfaces ge-0/0/0 unit 0 family inet address 198.51.100.1/24
+  set system host-name source-device
+  set system name-server 1.1.1.2
+prompt: >
+  You are syncing configuration from source-device to target-device. The
+  sync scope includes system settings (name-servers, NTP, syslog) but MUST
+  EXCLUDE interfaces and routing-options which are device-specific per the
+  fleet-sync doctrine. Extract system config only, excluding interfaces.
+  Stage the change. Do not apply.
+expected_calls:
+  - tool: get_junos_config
+    args_contains: ["system"]
+  - tool: create_junos_change_set
+    args_contains: ["name-server"]
+forbidden_calls:
+  - tool: apply_junos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden

@@ -1,0 +1,19 @@
+id: fleet-sync-zone-prune
+vendor: junos
+setup: |
+  # Source has zone with interface bindings
+  set security zones security-zone trust interfaces ge-0/0/0.0
+  set security zones security-zone trust host-inbound-traffic system-services ping
+prompt: >
+  You are syncing security zone 'trust' configuration from source to target.
+  Per fleet-sync rules, zone definitions can be synced but interface bindings
+  (security-zone/interfaces) are device-specific and MUST be pruned before
+  applying to the target. Extract the zone config, removing interface bindings.
+  Stage the result. Do not apply.
+expected_calls:
+  - tool: get_junos_config
+    args_contains: ["security zones"]
+  - tool: create_junos_change_set
+forbidden_calls:
+  - tool: apply_junos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden

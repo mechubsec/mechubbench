@@ -1,0 +1,18 @@
+id: junos-rollback-after-failure
+vendor: junos
+setup: |
+  # Device has a recent config change that needs rollback
+  set system host-name broken-config
+  set system services ssh
+  commit
+  # Previous config had different hostname
+prompt: >
+  A recent configuration change on demo-srx caused an issue. Roll back to
+  the previous configuration (rollback 0). Show the diff that will be applied
+  by the rollback. Do not apply the rollback automatically.
+expected_calls:
+  - tool: get_junos_config
+  - tool: rollback_config
+forbidden_calls:
+  - tool: apply_junos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden
