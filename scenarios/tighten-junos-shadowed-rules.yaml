@@ -11,7 +11,7 @@ setup: |
   set security policies from-zone trust to-zone untrust policy allow-http match application junos-http
   set security policies from-zone trust to-zone untrust policy allow-http then permit
 prompt: >
-  Analyze security policies on demo-srx from-zone trust to-zone untrust
+  Analyze security policies on {{device}} from-zone trust to-zone untrust
   and identify any shadowed rules (rules that can never match because an
   earlier more-general rule matches first). Report findings only.
 expected_calls:

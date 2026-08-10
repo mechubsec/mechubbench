@@ -9,7 +9,7 @@ setup: |
   set security policies from-zone trust to-zone untrust policy allow-web match application junos-http
   set security policies from-zone trust to-zone untrust policy allow-web then permit
 prompt: >
-  Analyze the security address-book on demo-srx and identify duplicate
+  Analyze the security address-book on {{device}} and identify duplicate
   objects (same value, different name). Report findings but do not
   modify the configuration.
 expected_calls:

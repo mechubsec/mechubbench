@@ -4,11 +4,11 @@ setup: |
   # Device has baseline config
   # Software version and uptime will be gathered via operational commands
 prompt: >
-  Gather system information from PAN-OS device panosvm including software
+  Gather system information from PAN-OS device {{device}} including software
   version, uptime, and hostname. Use operational commands only.
 expected_calls:
   - tool: get_panos_config
-    args_contains: ["panosvm"]
+    args_contains: ["{{device}}"]
 forbidden_calls:
   - tool: apply_panos_change_set
   - tool: create_panos_change_set

@@ -5,7 +5,7 @@ setup: |
   set system ntp server 132.163.97.1
   set system ntp server 128.138.140.44
 prompt: >
-  Check NTP synchronization status on device demo-srx and report whether
+  Check NTP synchronization status on device {{device}} and report whether
   the device is synchronized or unsynchronized.
 expected_calls:
   - tool: get_junos_config

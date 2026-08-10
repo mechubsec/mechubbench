@@ -18,7 +18,7 @@ setup: |
     </devices>
   </config>
 prompt: >
-  Standardize NTP configuration on panosvm to baseline NIST servers:
+  Standardize NTP configuration on {{device}} to baseline NIST servers:
   primary 132.163.97.1, secondary 128.138.140.44. Create a change set
   to replace existing NTP config. Show diff but do not apply.
 expected_calls:

@@ -189,7 +189,31 @@ def cmd_lint(args: argparse.Namespace) -> int:
         try:
             scenario = core.load_scenario(scenario_file)
             core.validate_scenario(scenario, schema_path)
-            logger.info(f"  {scenario_file.name}: OK")
+
+            # Check for hardcoded device names without {{device}} placeholder
+            prompt = scenario.get("prompt", "")
+            setup = scenario.get("setup", "")
+
+            device_patterns = [
+                "demo-srx", "demo-pa", "demo-fw", "panosvm",
+                r"vsrx-[a-z0-9]+", r"fw-[a-z0-9]+", r"pa-[a-z0-9]+"
+            ]
+
+            has_placeholder = "{{device}}" in prompt or "{{device}}" in setup
+            has_hardcoded = any(
+                pattern in prompt or pattern in setup
+                for pattern in ["demo-srx", "demo-pa", "demo-fw", "panosvm"]
+            )
+
+            if has_hardcoded and not has_placeholder:
+                logger.error(
+                    f"  {scenario_file.name}: LINT ERROR - Prompt has hardcoded device name "
+                    f"without {{{{device}}}} placeholder"
+                )
+                errors.append(scenario_file.name)
+            else:
+                logger.info(f"  {scenario_file.name}: OK")
+
         except (ValueError, jsonschema.ValidationError) as e:
             logger.error(f"  {scenario_file.name}: INVALID - {e}")
             errors.append(scenario_file.name)

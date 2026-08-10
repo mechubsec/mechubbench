@@ -7,14 +7,14 @@ setup: |
       <entry name="localhost.localdomain">
         <deviceconfig>
           <system>
-            <hostname>panosvm</hostname>
+            <hostname>{{device}}</hostname>
           </system>
         </deviceconfig>
       </entry>
     </devices>
   </config>
 prompt: >
-  Create a change set on panosvm to add a banner message to the system
+  Create a change set on {{device}} to add a banner message to the system
   config. The change set must go through the approval workflow. Create
   the change set but DO NOT apply it - it requires approval from a second
   principal per two-person control policy.

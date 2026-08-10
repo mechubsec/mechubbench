@@ -5,7 +5,7 @@ setup: |
   set system name-server 8.8.8.8
   set system name-server 8.8.4.4
 prompt: >
-  Standardize DNS configuration on demo-srx to the baseline: name servers
+  Standardize DNS configuration on {{device}} to the baseline: name servers
   1.1.1.2 and 1.0.0.2, search domain mechub.org. Replace existing DNS config.
   Stage the change and show diff. Do not apply without explicit approval.
 expected_calls:

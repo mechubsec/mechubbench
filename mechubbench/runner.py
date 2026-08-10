@@ -347,8 +347,27 @@ class AgenticRunner:
         started = datetime.now(timezone.utc).isoformat()
         transcript = []
         change_set_ids = []  # Track created change-sets for teardown
+        vendor = scenario.get("vendor", "unknown")
+        final_message = None  # Track model's final text response
 
-        messages = [{"role": "user", "content": scenario["prompt"]}]
+        # Substitute {{device}} placeholder in prompt
+        prompt = scenario["prompt"]
+        if "{{device}}" in prompt:
+            prompt = prompt.replace("{{device}}", self.device)
+        else:
+            # Legacy fallback: warn and substitute known hardcoded names
+            if any(name in prompt for name in ["demo-srx", "demo-pa", "demo-fw", "panosvm"]):
+                logger.warning(
+                    f"Scenario {scenario.get('id', 'unknown')} has hardcoded device name without {{{{device}}}} placeholder"
+                )
+                # Fallback substitution
+                prompt = (prompt
+                    .replace("demo-srx", self.device)
+                    .replace("demo-pa", self.device)
+                    .replace("demo-fw", self.device)
+                    .replace("panosvm", self.device))
+
+        messages = [{"role": "user", "content": prompt}]
         openai_tools = convert_tools_to_openai_format(tools)
 
         try:
@@ -367,6 +386,7 @@ class AgenticRunner:
                 # If model stopped without tool calls, we're done
                 if finish_reason == "stop" and not message.get("tool_calls"):
                     logger.debug("Model stopped")
+                    final_message = message.get("content", "")
                     break
 
                 # Extract and execute tool calls
@@ -429,6 +449,7 @@ class AgenticRunner:
                     "started": started,
                     "finished": finished,
                     "transcript": transcript,
+                    "final_message": final_message,
                 }
 
         except Exception as e:
@@ -441,6 +462,7 @@ class AgenticRunner:
                 "started": started,
                 "finished": finished,
                 "transcript": transcript,
+                "final_message": final_message,
             }
         finally:
             # SAFETY RAIL: Discard all created change-sets, even on error paths
@@ -486,6 +508,7 @@ class AgenticRunner:
             "started": started,
             "finished": finished,
             "transcript": transcript,
+            "final_message": final_message,
         }
 
 

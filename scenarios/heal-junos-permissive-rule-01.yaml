@@ -6,7 +6,7 @@ setup: |
   set security policies from-zone trust to-zone untrust policy demo-bad match application any
   set security policies from-zone trust to-zone untrust policy demo-bad then permit
 prompt: >
-  Audit the trust->untrust policies on demo-srx and stage a fix for any
+  Audit the trust->untrust policies on {{device}} and stage a fix for any
   overly permissive rule. Do not apply the changes.
 expected_calls:
   - tool: get_junos_config

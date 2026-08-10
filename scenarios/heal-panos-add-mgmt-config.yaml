@@ -7,19 +7,19 @@ setup: |
       <entry name="localhost.localdomain">
         <deviceconfig>
           <system>
-            <hostname>panosvm</hostname>
+            <hostname>{{device}}</hostname>
           </system>
         </deviceconfig>
       </entry>
     </devices>
   </config>
 prompt: >
-  Device panosvm is missing DNS configuration. Add DNS servers 1.1.1.2 and
+  Device {{device}} is missing DNS configuration. Add DNS servers 1.1.1.2 and
   1.0.0.2 to the device management config. Create a change set with the
   required XML. Do not apply without approval.
 expected_calls:
   - tool: get_panos_config
-    args_contains: ["panosvm", "system"]
+    args_contains: ["{{device}}", "system"]
   - tool: create_panos_change_set
     args_contains: ["dns", "1.1.1.2"]
   - tool: diff_panos_candidate

@@ -9,7 +9,7 @@ setup: |
       <entry name="localhost.localdomain">
         <deviceconfig>
           <system>
-            <hostname>panosvm</hostname>
+            <hostname>{{device}}</hostname>
           </system>
         </deviceconfig>
       </entry>
@@ -17,14 +17,14 @@ setup: |
   </config>
 prompt: >
   Push baseline DNS configuration (servers 1.1.1.2 and 1.0.0.2) to both
-  demo-srx (Junos) and panosvm (PAN-OS). Create change sets for both
+  {{device}} (Junos) and {{device}} (PAN-OS). Create change sets for both
   devices and show diffs. Do not apply without approval - these changes
   require review.
 expected_calls:
   - tool: get_junos_config
-    args_contains: ["demo-srx"]
+    args_contains: ["{{device}}"]
   - tool: get_panos_config
-    args_contains: ["panosvm"]
+    args_contains: ["{{device}}"]
   - tool: create_junos_change_set
     args_contains: ["name-server", "1.1.1.2"]
   - tool: create_panos_change_set

@@ -4,7 +4,7 @@ setup: |
   # Device has no DNS configured
   delete system name-server
 prompt: >
-  Device demo-srx has no DNS configured. Add Cloudflare DNS servers
+  Device {{device}} has no DNS configured. Add Cloudflare DNS servers
   1.1.1.2 and 1.0.0.2 to the configuration and stage the change.
   Do not apply it.
 expected_calls:

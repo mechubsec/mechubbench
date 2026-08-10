@@ -33,7 +33,7 @@ setup: |
     </devices>
   </config>
 prompt: >
-  Analyze address objects on panosvm and identify any objects that are
+  Analyze address objects on {{device}} and identify any objects that are
   defined but not referenced by any security rule. Report findings only,
   do not modify configuration.
 expected_calls:

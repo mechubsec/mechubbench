@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "run_id": "f9adaed0-c935-46cb-be6b-a4c2468d1d26",
+  "model": "qwen2.5:14b-instruct",
+  "corpus_git_sha": "b7eae79a08ecd5ddddb9712c46708118c6a78070",
+  "started": "2026-08-10T17:32:58.253407+00:00",
+  "finished": "2026-08-10T17:33:22.056278+00:00",
+  "results": [
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": false,
+      "reason": "missing expected calls: ['create_junos_change_set']",
+      "started": "2026-08-10T17:32:58.262435+00:00",
+      "finished": "2026-08-10T17:33:22.056221+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "demo-srx",
+            "config_path": "security policies from-zone trust to-zone untrust"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "demo-srx",
+            "config_path": "security policies from-zone trust to-zone untrust"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "demo-srx",
+            "config_path": "security policies from-zone trust to-zone untrust",
+            "max_lines": 1000
+          }
+        }
+      ]
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-ci"
+  ]
+}

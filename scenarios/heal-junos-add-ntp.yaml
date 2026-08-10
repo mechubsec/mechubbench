@@ -5,7 +5,7 @@ setup: |
   set system name-server 1.1.1.2
   set system name-server 1.0.0.2
 prompt: >
-  Device demo-srx has DNS configured but no NTP servers. Add NIST NTP
+  Device {{device}} has DNS configured but no NTP servers. Add NIST NTP
   servers 132.163.97.1 and 128.138.140.44. Stage the change and show
   the diff. Do not apply.
 expected_calls:

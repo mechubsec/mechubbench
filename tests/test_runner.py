@@ -932,3 +932,79 @@ class TestAgenticRunner:
         teardown_call = mock_mcp.call_tool.call_args_list[1]
         assert teardown_call[0][0] == "discard_panos_candidate"
         assert teardown_call[0][1] == {"device": "test-pa"}
+
+
+class TestDeviceTemplateSubstitution:
+    """Test {{device}} template substitution in scenarios."""
+
+    def test_template_substituted_in_prompt(self):
+        """{{device}} placeholder is substituted with selected device."""
+        scenario = {
+            "id": "test-template",
+            "vendor": "junos",
+            "prompt": "Configure {{device}} with NTP servers",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = []
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.return_value = {
+            "choices": [{
+                "message": {"content": "Done"},
+                "finish_reason": "stop"
+            }]
+        }
+
+        mock_mcp = Mock()
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-device-123",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Check that the prompt sent to LLM contains the substituted device
+        llm_call = mock_llm.complete_with_tools.call_args
+        messages = llm_call[0][1]  # Second positional arg is messages
+        assert messages[0]["content"] == "Configure test-device-123 with NTP servers"
+
+    def test_final_message_captured(self):
+        """Model's final text response is captured in result."""
+        scenario = {
+            "id": "test-final",
+            "vendor": "junos",
+            "prompt": "Test prompt",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = []
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.return_value = {
+            "choices": [{
+                "message": {"content": "Configuration complete"},
+                "finish_reason": "stop"
+            }]
+        }
+
+        mock_mcp = Mock()
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-device",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Final message should be captured
+        assert result["final_message"] == "Configuration complete"

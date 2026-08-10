@@ -7,7 +7,7 @@ setup: |
   commit
   # Previous config had different hostname
 prompt: >
-  A recent configuration change on demo-srx caused an issue. Roll back to
+  A recent configuration change on {{device}} caused an issue. Roll back to
   the previous configuration (rollback 0). Show the diff that will be applied
   by the rollback. Do not apply the rollback automatically.
 expected_calls:
