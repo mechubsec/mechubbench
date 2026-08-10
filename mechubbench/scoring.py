@@ -245,7 +245,9 @@ def _score_outcome(
     Args:
         scenario: Scenario dict with outcome field
         transcript: Tool-call transcript
-        staged_diff: Captured diff text from staged change-sets
+        staged_diff: Captured staged state (vendor-specific):
+            - Junos: JSON-serialized change-set status (from get_junos_change_set_status)
+            - PAN-OS: device candidate diff (from diff_panos_candidate)
         final_message: Agent's final text response
 
     Returns:

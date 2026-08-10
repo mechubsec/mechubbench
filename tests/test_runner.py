@@ -1103,7 +1103,7 @@ class TestScenarioSetupTeardown:
         assert not hasattr(agentic_runner, "setup_client")
 
     def test_outcome_capture_before_teardown(self):
-        """Outcome mode: staged diff captured BEFORE teardown discards it."""
+        """Outcome mode: change-set status captured BEFORE teardown discards it."""
         scenario = {
             "id": "test-outcome",
             "vendor": "junos",
@@ -1112,27 +1112,53 @@ class TestScenarioSetupTeardown:
             "forbidden_calls": [],
             "scoring": "outcome",
             "outcome": {
-                "staged_diff_contains": ["ntp"],
+                "staged_diff_contains": ["ntp", "132.163.97.1"],
             },
         }
 
-        tools = []
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create change-set", "parameters": {"type": "object"}},
+        ]
 
         mock_llm = Mock()
-        mock_llm.complete_with_tools.return_value = {
-            "choices": [{
-                "message": {"content": "Done"},
-                "finish_reason": "stop"
-            }]
-        }
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"config": "set system ntp server 132.163.97.1"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Change created"},
+                    "finish_reason": "stop"
+                }]
+            }
+        ]
 
-        # Mock MCP client to track call order
+        # Mock MCP client to track call order and return change-set status
         call_order = []
 
         def track_calls(tool_name, args):
             call_order.append(tool_name)
-            if tool_name == "junos_config_diff":
-                return "+ set system ntp server 132.163.97.1"
+            if tool_name == "create_junos_change_set":
+                return {"change_set_id": "cs-123", "status": "staged"}
+            elif tool_name == "get_junos_change_set_status":
+                # Return full change-set structure
+                return {
+                    "change_set_id": "cs-123",
+                    "status": "staged",
+                    "payload": "set system ntp server 132.163.97.1",
+                    "device": "test-device"
+                }
             elif tool_name == "discard_candidate":
                 return {"success": True}
             return {}
@@ -1149,10 +1175,112 @@ class TestScenarioSetupTeardown:
 
         result = agentic_runner.run_scenario(scenario, "test-model", tools)
 
-        # Verify capture happened before teardown
-        # No change-sets created in this test, so no capture/teardown
-        # But the code path proves: finally block captures BEFORE discarding
-        assert result["pass"] is False  # No diff captured (no change-sets created)
+        # Verify call order: create → get_status → discard
+        assert "create_junos_change_set" in call_order
+        assert "get_junos_change_set_status" in call_order
+        assert "discard_candidate" in call_order
+
+        # get_junos_change_set_status must come BEFORE discard_candidate
+        status_idx = call_order.index("get_junos_change_set_status")
+        discard_idx = call_order.index("discard_candidate")
+        assert status_idx < discard_idx, "Capture must happen before teardown"
+
+        # Verify outcome passed (assertions matched against JSON)
+        assert result["pass"] is True
+
+    def test_outcome_capture_failure_continues(self):
+        """Outcome mode: capture failure on one cs_id doesn't skip the others."""
+        scenario = {
+            "id": "test-multi-cs",
+            "vendor": "junos",
+            "prompt": "Multi change-set",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "outcome",
+            "outcome": {
+                "staged_diff_contains": ["second-change"],
+            },
+        }
+
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create first change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"config": "set first"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: create second change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"config": "set second-change"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 3: stop
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            }
+        ]
+
+        call_count = {"create": 0, "get_status": 0}
+
+        def track_multi_cs(tool_name, args):
+            if tool_name == "create_junos_change_set":
+                call_count["create"] += 1
+                return {"change_set_id": f"cs-{call_count['create']}", "status": "staged"}
+            elif tool_name == "get_junos_change_set_status":
+                call_count["get_status"] += 1
+                cs_id = args["change_set_id"]
+                if cs_id == "cs-1":
+                    # First capture fails
+                    raise Exception("Failed to get cs-1")
+                # Second succeeds
+                return {
+                    "change_set_id": "cs-2",
+                    "payload": "set second-change",
+                }
+            elif tool_name == "discard_candidate":
+                return {"success": True}
+            return {}
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.side_effect = track_multi_cs
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-device",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should have tried to capture both change-sets
+        assert call_count["get_status"] == 2
+        # Should pass (second capture succeeded with "second-change")
+        assert result["pass"] is True
 
 
 class TestOllamaHealthProbe:

@@ -562,18 +562,32 @@ class AgenticRunner:
                 vendor = scenario.get("vendor", "junos")
                 try:
                     if vendor == "junos":
-                        # Capture Junos candidate diff
-                        diff_result = self.mcp_client.call_tool(
-                            "junos_config_diff",
-                            {"device": self.device, "version": 0}
-                        )
-                        if isinstance(diff_result, dict):
-                            staged_diff = diff_result.get("diff", "")
-                        else:
-                            staged_diff = str(diff_result) if diff_result else ""
-                        logger.debug(f"Captured Junos staged diff: {len(staged_diff)} chars")
+                        # Junos: create_junos_change_set stages in MCP server store,
+                        # NOT device candidate. Capture via get_junos_change_set_status.
+                        captured_statuses = []
+                        for cs_id in change_set_ids:
+                            try:
+                                status_result = self.mcp_client.call_tool(
+                                    "get_junos_change_set_status",
+                                    {"change_set_id": cs_id, "device": self.device}
+                                )
+                                # Serialize the full change-set structure (includes payload/actions)
+                                if isinstance(status_result, dict):
+                                    status_text = json.dumps(status_result, indent=2)
+                                else:
+                                    status_text = str(status_result)
+                                captured_statuses.append(status_text)
+                                logger.debug(f"Captured Junos change-set {cs_id}: {len(status_text)} chars")
+                            except Exception as cs_error:
+                                logger.warning(f"Failed to capture change-set {cs_id}: {cs_error}")
+                                # Continue capturing other change-sets
+                                continue
+
+                        # Concatenate all captured statuses
+                        staged_diff = "\n\n".join(captured_statuses) if captured_statuses else None
+
                     elif vendor == "panos":
-                        # Capture PAN-OS candidate diff
+                        # PAN-OS: change-sets DO stage to device candidate
                         diff_result = self.mcp_client.call_tool(
                             "diff_panos_candidate",
                             {"device": self.device}
@@ -584,7 +598,7 @@ class AgenticRunner:
                             staged_diff = str(diff_result) if diff_result else ""
                         logger.debug(f"Captured PAN-OS staged diff: {len(staged_diff)} chars")
                 except Exception as capture_error:
-                    logger.warning(f"Failed to capture staged diff: {capture_error}")
+                    logger.warning(f"Failed to capture staged state: {capture_error}")
                     staged_diff = None
 
             # SAFETY RAIL: Discard all created change-sets, even on error paths

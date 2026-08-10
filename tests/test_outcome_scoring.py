@@ -19,7 +19,13 @@ def test_outcome_staged_diff_contains_pass():
     transcript = [
         {"tool": "create_junos_change_set", "args": {"config": "set system ntp server 132.163.97.1"}},
     ]
-    staged_diff = "+ set system ntp server 132.163.97.1\n+ set system ntp server 128.138.140.44"
+    # Junos: staged_diff is JSON-serialized change-set status
+    staged_diff = """{
+  "change_set_id": "cs-123",
+  "status": "staged",
+  "payload": "set system ntp server 132.163.97.1\\nset system ntp server 128.138.140.44",
+  "device": "test-device"
+}"""
 
     result = scoring.score_scenario(scenario, transcript, staged_diff=staged_diff)
     assert result["pass"] is True
