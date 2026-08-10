@@ -221,11 +221,18 @@ class MCPClient:
             raise MCPError(f"No content in MCP result for {tool_name}")
 
         # Parse text from first content item
-        text_content = content[0].get("text", "{}")
+        text_content = content[0].get("text", "")
+
+        # Try to parse as JSON for structured results; if that fails,
+        # return raw text (e.g., config dumps from get_junos_config)
         try:
             return json.loads(text_content)
-        except json.JSONDecodeError as e:
-            raise MCPError(f"Failed to parse tool result JSON: {e}")
+        except json.JSONDecodeError:
+            # Not JSON - return raw text (truncate large configs to avoid context explosion)
+            MAX_TEXT_LEN = 8000
+            if len(text_content) > MAX_TEXT_LEN:
+                return text_content[:MAX_TEXT_LEN] + "\n...[truncated]"
+            return text_content
 
 
 def filter_safe_devices(devices: list[dict] | list[str]) -> list[dict] | list[str]:

@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "run_id": "8fc4ab36-a37f-4690-83c6-c1712dad5f5c",
+  "model": "qwen2.5:14b-instruct",
+  "corpus_git_sha": "d97e6efcde7e3c3330c1d648454fa497a6c20d8d",
+  "started": "2026-08-10T17:28:56.302783+00:00",
+  "finished": "2026-08-10T17:29:58.702785+00:00",
+  "results": [
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": false,
+      "reason": "args_contains mismatch: missing ['demo-bad'] in call to create_junos_change_set",
+      "started": "2026-08-10T17:28:56.313394+00:00",
+      "finished": "2026-08-10T17:29:58.702735+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "config_path": "security policies",
+            "device": "demo-srx"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "demo-srx",
+            "config_path": "security policies"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "config_path": "security policies",
+            "max_lines": 1000,
+            "device": "demo-srx"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "demo-srx",
+            "config_path": "security policies",
+            "max_lines": 1000
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "demo-srx",
+            "expected_fingerprint": "<current-fingerprint>",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policies from-zone trust to-zone untrust policy overly-permissive-policy"
+                },
+                "type": "object"
+              },
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policies from-zone trust to-zone untrust policy another-overly-permissive-policy"
+                },
+                "type": "object"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-ci"
+  ]
+}

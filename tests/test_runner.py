@@ -125,6 +125,117 @@ class TestMCPClient:
 
             assert result == {"data": "value"}
 
+    def test_json_result_parsed(self):
+        """JSON tool results are parsed to dict."""
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "s1"}
+        init_response.json.return_value = {"jsonrpc": "2.0", "id": 0, "result": {}}
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
+
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
+
+        # Tool returns JSON result
+        json_response = Mock()
+        json_response.headers = {"content-type": "application/json"}
+        json_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "content": [{
+                    "type": "text",
+                    "text": '{"status":"success","data":"value"}'
+                }]
+            }
+        }
+        json_response.raise_for_status = Mock()
+        json_response.text = ""
+
+        with patch("httpx.post", side_effect=[init_response, initialized_response, json_response]):
+            client = runner.MCPClient("http://test/mcp", "token")
+            result = client.call_tool("get_facts", {})
+
+            # Should be parsed dict
+            assert isinstance(result, dict)
+            assert result == {"status": "success", "data": "value"}
+
+    def test_plain_text_result_returned_verbatim(self):
+        """Plain text tool results (e.g., config dumps) are returned as-is."""
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "s1"}
+        init_response.json.return_value = {"jsonrpc": "2.0", "id": 0, "result": {}}
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
+
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
+
+        # Tool returns plain config text (not JSON)
+        config_text = "set system host-name test\nset interfaces ge-0/0/0 unit 0 family inet address 10.0.0.1/24"
+        text_response = Mock()
+        text_response.headers = {"content-type": "application/json"}
+        text_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "content": [{
+                    "type": "text",
+                    "text": config_text
+                }]
+            }
+        }
+        text_response.raise_for_status = Mock()
+        text_response.text = ""
+
+        with patch("httpx.post", side_effect=[init_response, initialized_response, text_response]):
+            client = runner.MCPClient("http://test/mcp", "token")
+            result = client.call_tool("get_junos_config", {})
+
+            # Should be returned as plain string
+            assert isinstance(result, str)
+            assert result == config_text
+
+    def test_oversized_text_truncated(self):
+        """Very large text results are truncated to avoid context explosion."""
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "s1"}
+        init_response.json.return_value = {"jsonrpc": "2.0", "id": 0, "result": {}}
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
+
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
+
+        # Tool returns very large config (10000 chars)
+        large_config = "set interfaces ge-0/0/0 description test\n" * 500  # ~22000 chars
+        text_response = Mock()
+        text_response.headers = {"content-type": "application/json"}
+        text_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "content": [{
+                    "type": "text",
+                    "text": large_config
+                }]
+            }
+        }
+        text_response.raise_for_status = Mock()
+        text_response.text = ""
+
+        with patch("httpx.post", side_effect=[init_response, initialized_response, text_response]):
+            client = runner.MCPClient("http://test/mcp", "token")
+            result = client.call_tool("get_junos_config", {})
+
+            # Should be truncated
+            assert isinstance(result, str)
+            assert len(result) <= 8015  # 8000 + "\n...[truncated]"
+            assert result.endswith("...[truncated]")
+
     def test_token_redacted_in_error_messages(self):
         """MCP errors never expose the bearer token."""
         secret_token = "secret-token-abc123"
