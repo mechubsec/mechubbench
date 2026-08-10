@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "run_id": "e396744f-cca8-41e6-81ad-0db1904b8106",
+  "model": "ornith:35b",
+  "corpus_git_sha": "c8f43eb57472a7267c11f7eea4ecbb62a4928760",
+  "started": "2026-08-10T18:44:36.343650+00:00",
+  "finished": "2026-08-10T18:47:37.108616+00:00",
+  "results": [
+    {
+      "id": "discover-junos-ntp-status",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-10T18:44:36.366856+00:00",
+      "finished": "2026-08-10T18:45:44.763670+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system ntp"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system ntp status"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "max_lines": 200
+          }
+        }
+      ]
+    },
+    {
+      "id": "fail-junos-any-any-permit",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:45:56.646537+00:00",
+      "finished": "2026-08-10T18:45:56.646549+00:00",
+      "transcript": []
+    },
+    {
+      "id": "fleet-sync-exclusion-interfaces",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:46:06.700388+00:00",
+      "finished": "2026-08-10T18:46:06.700397+00:00",
+      "transcript": []
+    },
+    {
+      "id": "fleet-sync-zone-prune",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:46:16.740980+00:00",
+      "finished": "2026-08-10T18:46:16.740990+00:00",
+      "transcript": []
+    },
+    {
+      "id": "heal-junos-add-dns",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:46:26.793113+00:00",
+      "finished": "2026-08-10T18:46:26.793128+00:00",
+      "transcript": []
+    },
+    {
+      "id": "heal-junos-add-ntp",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:46:36.836040+00:00",
+      "finished": "2026-08-10T18:46:36.836053+00:00",
+      "transcript": []
+    },
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:46:46.877615+00:00",
+      "finished": "2026-08-10T18:46:46.877628+00:00",
+      "transcript": []
+    },
+    {
+      "id": "junos-rollback-after-failure",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:46:56.926408+00:00",
+      "finished": "2026-08-10T18:46:56.926422+00:00",
+      "transcript": []
+    },
+    {
+      "id": "standardize-junos-dns-baseline",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:47:06.969729+00:00",
+      "finished": "2026-08-10T18:47:06.969738+00:00",
+      "transcript": []
+    },
+    {
+      "id": "standardize-junos-ntp-baseline",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:47:17.016596+00:00",
+      "finished": "2026-08-10T18:47:17.016606+00:00",
+      "transcript": []
+    },
+    {
+      "id": "tighten-junos-duplicate-objects",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:47:27.060930+00:00",
+      "finished": "2026-08-10T18:47:27.060943+00:00",
+      "transcript": []
+    },
+    {
+      "id": "tighten-junos-shadowed-rules",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:47:37.108588+00:00",
+      "finished": "2026-08-10T18:47:37.108604+00:00",
+      "transcript": []
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-ci"
+  ]
+}

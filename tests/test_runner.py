@@ -1101,3 +1101,46 @@ class TestScenarioSetupTeardown:
         assert agentic_runner.mcp_client == mock_mcp_agent
         assert hasattr(agentic_runner, "mcp_client")
         assert not hasattr(agentic_runner, "setup_client")
+
+
+class TestOllamaHealthProbe:
+    """Test Ollama responsiveness probe."""
+
+    def test_responsive_model_proceeds(self):
+        """Loaded model + responsive → probe succeeds."""
+        probe = runner.OllamaHealthProbe("http://test:11434")
+
+        # Mock /api/ps showing loaded model
+        ps_response = Mock()
+        ps_response.json.return_value = {
+            "models": [{"name": "qwen2.5:14b", "size": 123456}]
+        }
+        ps_response.raise_for_status = Mock()
+
+        # Mock /api/generate probe success
+        gen_response = Mock()
+        gen_response.json.return_value = {"response": "pong"}
+        gen_response.raise_for_status = Mock()
+
+        with patch("httpx.get", return_value=ps_response):
+            with patch("httpx.post", return_value=gen_response):
+                # Should not raise
+                probe.wait_for_settle(model="qwen2.5:14b", timeout=60.0)
+
+    def test_unresponsive_model_fails_after_retry(self):
+        """Unresponsive model → retry once, then structured failure."""
+        probe = runner.OllamaHealthProbe("http://test:11434")
+
+        # Mock /api/ps (diagnostic only, doesn't gate)
+        ps_response = Mock()
+        ps_response.json.return_value = {"models": []}
+        ps_response.raise_for_status = Mock()
+
+        # Mock /api/generate timing out twice
+        timeout_error = httpx.TimeoutException("Request timed out")
+
+        with patch("httpx.get", return_value=ps_response):
+            with patch("httpx.post", side_effect=[timeout_error, timeout_error]):
+                with patch("time.sleep"):  # Skip actual sleep in test
+                    with pytest.raises(TimeoutError, match="unresponsive after retry"):
+                        probe.wait_for_settle(model="test-model", timeout=60.0)

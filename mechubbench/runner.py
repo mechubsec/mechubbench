@@ -524,7 +524,7 @@ class OllamaHealthProbe:
         self.base_url = base_url.rstrip("/")
 
     def get_running_models(self) -> list[dict]:
-        """Query /api/ps for currently loaded models.
+        """Query /api/ps for currently loaded models (diagnostic only).
 
         Returns:
             List of running model dicts from Ollama
@@ -537,29 +537,70 @@ class OllamaHealthProbe:
         data = response.json()
         return data.get("models", [])
 
-    def wait_for_settle(self, timeout: float = 30.0) -> None:
-        """Wait for Ollama to settle (no running generations).
+    def probe_responsiveness(self, model: str, timeout: float = 30.0) -> None:
+        """Probe model responsiveness with minimal completion request.
 
         Args:
+            model: Model identifier to probe
+            timeout: Probe timeout in seconds
+
+        Raises:
+            TimeoutError: If probe fails or times out
+            httpx.HTTPError: If request fails
+        """
+        url = f"{self.base_url}/api/generate"
+        payload = {
+            "model": model,
+            "prompt": "ping",
+            "stream": False,
+            "options": {
+                "num_predict": 1,
+                "temperature": 0,
+            }
+        }
+
+        try:
+            response = httpx.post(url, json=payload, timeout=timeout)
+            response.raise_for_status()
+            logger.debug(f"Model {model} is responsive")
+        except (httpx.TimeoutException, httpx.HTTPError) as e:
+            raise TimeoutError(f"Model {model} responsiveness probe failed: {e}")
+
+    def wait_for_settle(self, model: str, timeout: float = 60.0) -> None:
+        """Wait for Ollama to be responsive (detects wedged/zombie server).
+
+        Args:
+            model: Model identifier to probe
             timeout: Maximum time to wait in seconds
 
         Raises:
-            TimeoutError: If settle doesn't happen within timeout
+            TimeoutError: If server is unresponsive after retry
         """
-        start = time.time()
-        while time.time() - start < timeout:
+        # Log which models are loaded (diagnostic only, not gating)
+        try:
             models = self.get_running_models()
-            # Consider settled if no models running or all are idle
-            if not models:
-                logger.debug("Ollama settled (no models loaded)")
-                return
+            if models:
+                model_names = [m.get("name", "unknown") for m in models]
+                logger.debug(f"Loaded models: {', '.join(model_names)}")
+            else:
+                logger.debug("No models currently loaded")
+        except Exception as e:
+            logger.debug(f"Could not query /api/ps: {e}")
 
-            # Check if any model is actively processing
-            # (Ollama /api/ps doesn't expose this cleanly, so we just wait a bit)
-            time.sleep(2.0)
+        # Responsiveness probe: try once, retry once after 10s, then fail
+        try:
+            self.probe_responsiveness(model, timeout=30.0)
+            return
+        except TimeoutError as e:
+            logger.warning(f"First responsiveness probe failed: {e}, retrying in 10s")
+            time.sleep(10.0)
 
-        # After timeout, raise error (scenario will fail with structured error)
-        raise TimeoutError(f"Ollama failed to settle after {timeout}s")
+        # Retry
+        try:
+            self.probe_responsiveness(model, timeout=30.0)
+            logger.info(f"Model {model} became responsive after retry")
+        except TimeoutError as e:
+            raise TimeoutError(f"Ollama unresponsive after retry: {e}")
 
 
 class LLMClient:
@@ -875,18 +916,18 @@ def run_all_scenarios_agentic(
     for i, scenario in enumerate(scenarios):
         logger.info(f"Running scenario {i+1}/{len(scenarios)}: {scenario['id']}")
 
-        # Wait for Ollama to settle between scenarios
+        # Probe Ollama responsiveness between scenarios
         if health_probe and i > 0:
-            logger.debug("Waiting for Ollama to settle...")
+            logger.debug("Probing Ollama responsiveness...")
             try:
-                health_probe.wait_for_settle(timeout=10.0)
+                health_probe.wait_for_settle(model=model, timeout=60.0)
             except TimeoutError as e:
-                # Settle timeout is a structured failure - fail the scenario
-                logger.error(f"Ollama settle timeout before scenario {scenario['id']}: {e}")
+                # Unresponsive server is a structured failure - fail the scenario
+                logger.error(f"Ollama unresponsive before scenario {scenario['id']}: {e}")
                 result = {
                     "id": scenario["id"],
                     "pass": False,
-                    "reason": f"ollama_settle_timeout: {e}",
+                    "reason": f"ollama_unresponsive: {e}",
                     "started": datetime.now(timezone.utc).isoformat(),
                     "finished": datetime.now(timezone.utc).isoformat(),
                     "transcript": [],

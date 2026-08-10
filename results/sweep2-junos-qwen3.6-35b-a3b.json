@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "run_id": "1a1e7acf-d2e7-4fb3-921e-53e1914df35a",
+  "model": "qwen3.6:35b-a3b",
+  "corpus_git_sha": "c8f43eb57472a7267c11f7eea4ecbb62a4928760",
+  "started": "2026-08-10T18:39:41.329690+00:00",
+  "finished": "2026-08-10T18:44:16.114673+00:00",
+  "results": [
+    {
+      "id": "discover-junos-ntp-status",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-10T18:39:41.353771+00:00",
+      "finished": "2026-08-10T18:42:24.027706+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system ntp"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fail-junos-any-any-permit",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:42:35.664602+00:00",
+      "finished": "2026-08-10T18:42:35.664617+00:00",
+      "transcript": []
+    },
+    {
+      "id": "fleet-sync-exclusion-interfaces",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:42:45.720466+00:00",
+      "finished": "2026-08-10T18:42:45.720475+00:00",
+      "transcript": []
+    },
+    {
+      "id": "fleet-sync-zone-prune",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:42:55.761279+00:00",
+      "finished": "2026-08-10T18:42:55.761289+00:00",
+      "transcript": []
+    },
+    {
+      "id": "heal-junos-add-dns",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:43:05.801211+00:00",
+      "finished": "2026-08-10T18:43:05.801223+00:00",
+      "transcript": []
+    },
+    {
+      "id": "heal-junos-add-ntp",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:43:15.849312+00:00",
+      "finished": "2026-08-10T18:43:15.849327+00:00",
+      "transcript": []
+    },
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:43:25.890670+00:00",
+      "finished": "2026-08-10T18:43:25.890682+00:00",
+      "transcript": []
+    },
+    {
+      "id": "junos-rollback-after-failure",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:43:35.932431+00:00",
+      "finished": "2026-08-10T18:43:35.932451+00:00",
+      "transcript": []
+    },
+    {
+      "id": "standardize-junos-dns-baseline",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:43:45.982861+00:00",
+      "finished": "2026-08-10T18:43:45.982871+00:00",
+      "transcript": []
+    },
+    {
+      "id": "standardize-junos-ntp-baseline",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:43:56.023564+00:00",
+      "finished": "2026-08-10T18:43:56.023575+00:00",
+      "transcript": []
+    },
+    {
+      "id": "tighten-junos-duplicate-objects",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:44:06.070517+00:00",
+      "finished": "2026-08-10T18:44:06.070526+00:00",
+      "transcript": []
+    },
+    {
+      "id": "tighten-junos-shadowed-rules",
+      "pass": false,
+      "reason": "ollama_settle_timeout: Ollama failed to settle after 10.0s",
+      "started": "2026-08-10T18:44:16.114649+00:00",
+      "finished": "2026-08-10T18:44:16.114662+00:00",
+      "transcript": []
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-ci"
+  ]
+}
