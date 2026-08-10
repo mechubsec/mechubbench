@@ -1,5 +1,6 @@
 id: standardize-junos-dns-baseline
 vendor: junos
+domain: system name-server
 setup: |
   # Device has different DNS servers configured
   set system name-server 8.8.8.8
@@ -16,4 +17,14 @@ expected_calls:
   - tool: junos_config_diff
 forbidden_calls:
   - tool: apply_junos_change_set
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  staged_diff_contains:
+    - "1.1.1.2"
+    - "1.0.0.2"
+    - "mechub.org"
+  staged_diff_matches_any:
+    - "delete.*8\\.8\\.8\\.8"
+    - "delete.*8\\.8\\.4\\.4"
+    - "set.*domain-name.*mechub"
+  must_not_commit: true

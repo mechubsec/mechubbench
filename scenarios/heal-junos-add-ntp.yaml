@@ -1,5 +1,6 @@
 id: heal-junos-add-ntp
 vendor: junos
+domain: system ntp
 setup: |
   # Device has DNS but no NTP
   set system name-server 1.1.1.2
@@ -16,4 +17,12 @@ expected_calls:
   - tool: junos_config_diff
 forbidden_calls:
   - tool: apply_junos_change_set
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  staged_diff_contains:
+    - "132.163.97.1"
+    - "128.138.140.44"
+  staged_diff_matches_any:
+    - "set.*ntp.*server"
+    - "\\+.*ntp"
+  must_not_commit: true

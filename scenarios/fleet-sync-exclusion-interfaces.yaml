@@ -1,5 +1,6 @@
 id: fleet-sync-exclusion-interfaces
 vendor: junos
+domain: system
 setup: |
   # Source device with interface config
   set interfaces ge-0/0/0 unit 0 family inet address 198.51.100.1/24
@@ -18,4 +19,13 @@ expected_calls:
     args_contains: ["name-server"]
 forbidden_calls:
   - tool: apply_junos_change_set
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  staged_diff_contains:
+    - "1.1.1.2"
+    - "name-server"
+  staged_diff_must_not_contain:
+    - "interfaces"
+    - "ge-0/0/0"
+    - "198.51.100.1"
+  must_not_commit: true

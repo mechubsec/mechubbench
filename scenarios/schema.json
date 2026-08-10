@@ -65,8 +65,47 @@
     },
     "scoring": {
       "type": "string",
-      "enum": ["outcome_lenient", "all_expected_present_and_ordered_no_forbidden"],
-      "description": "Scoring algorithm: outcome_lenient (default, presence-only, read args advisory) or all_expected_present_and_ordered_no_forbidden (strict, ordered, all args enforced)"
+      "enum": ["outcome", "outcome_lenient", "all_expected_present_and_ordered_no_forbidden"],
+      "description": "Scoring algorithm: outcome (honest gate, checks staged diff/report), outcome_lenient (presence-only, read args advisory), or all_expected_present_and_ordered_no_forbidden (strict)"
+    },
+    "outcome": {
+      "type": "object",
+      "description": "Outcome assertions for scoring=outcome mode",
+      "properties": {
+        "staged_diff_contains": {
+          "type": "array",
+          "description": "Substrings that must appear in staged diff",
+          "items": {
+            "type": "string"
+          }
+        },
+        "staged_diff_matches_any": {
+          "type": "array",
+          "description": "Regex patterns (at least one must match staged diff)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "must_not_commit": {
+          "type": "boolean",
+          "description": "Forbidden call enforcement (default true)"
+        },
+        "no_stage_expected": {
+          "type": "boolean",
+          "description": "Fail if changes were staged (for discover scenarios, default false)"
+        },
+        "report_contains": {
+          "type": "array",
+          "description": "Keywords that must appear in final_message (discover scenarios)",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "domain": {
+      "type": "string",
+      "description": "Config domain for smart truncation (e.g., 'system ntp', 'security policies')"
     }
   }
 }

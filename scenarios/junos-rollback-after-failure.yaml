@@ -1,5 +1,6 @@
 id: junos-rollback-after-failure
 vendor: junos
+domain: system
 setup: |
   # Device has a recent config change that needs rollback
   set system host-name broken-config
@@ -15,4 +16,11 @@ expected_calls:
   - tool: rollback_config
 forbidden_calls:
   - tool: apply_junos_change_set
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  staged_diff_contains:
+    - "host-name"
+  staged_diff_matches_any:
+    - "delete.*broken-config"
+    - "rollback"
+  must_not_commit: true

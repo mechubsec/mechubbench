@@ -1,5 +1,6 @@
 id: tighten-junos-duplicate-objects
 vendor: junos
+domain: security address-book
 setup: |
   # Two address objects with same value
   set security address-book global address server-a 10.10.10.5/32
@@ -18,4 +19,12 @@ expected_calls:
 forbidden_calls:
   - tool: apply_junos_change_set
   - tool: create_junos_change_set
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  report_contains:
+    - "duplicate"
+    - "10.10.10.5"
+    - "server-a"
+    - "server-b"
+  no_stage_expected: true
+  must_not_commit: true

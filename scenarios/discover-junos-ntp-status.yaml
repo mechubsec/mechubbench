@@ -1,5 +1,6 @@
 id: discover-junos-ntp-status
 vendor: junos
+domain: system ntp
 setup: |
   # Device has NTP configured but not synchronized
   set system ntp server 132.163.97.1
@@ -13,4 +14,10 @@ expected_calls:
 forbidden_calls:
   - tool: apply_junos_change_set
   - tool: rollback_config
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  report_contains:
+    - "ntp"
+    - "synchron"
+  no_stage_expected: true
+  must_not_commit: true

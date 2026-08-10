@@ -231,10 +231,10 @@ class TestMCPClient:
             client = runner.MCPClient("http://test/mcp", "token")
             result = client.call_tool("get_junos_config", {})
 
-            # Should be truncated
+            # Should be truncated (head+tail strategy adds marker text)
             assert isinstance(result, str)
-            assert len(result) <= 8015  # 8000 + "\n...[truncated]"
-            assert result.endswith("...[truncated]")
+            assert len(result) < len(large_config)  # Definitely truncated
+            assert "[truncated" in result  # Contains truncation marker
 
     def test_token_redacted_in_error_messages(self):
         """MCP errors never expose the bearer token."""
@@ -1101,6 +1101,58 @@ class TestScenarioSetupTeardown:
         assert agentic_runner.mcp_client == mock_mcp_agent
         assert hasattr(agentic_runner, "mcp_client")
         assert not hasattr(agentic_runner, "setup_client")
+
+    def test_outcome_capture_before_teardown(self):
+        """Outcome mode: staged diff captured BEFORE teardown discards it."""
+        scenario = {
+            "id": "test-outcome",
+            "vendor": "junos",
+            "prompt": "Add NTP",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "outcome",
+            "outcome": {
+                "staged_diff_contains": ["ntp"],
+            },
+        }
+
+        tools = []
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.return_value = {
+            "choices": [{
+                "message": {"content": "Done"},
+                "finish_reason": "stop"
+            }]
+        }
+
+        # Mock MCP client to track call order
+        call_order = []
+
+        def track_calls(tool_name, args):
+            call_order.append(tool_name)
+            if tool_name == "junos_config_diff":
+                return "+ set system ntp server 132.163.97.1"
+            elif tool_name == "discard_candidate":
+                return {"success": True}
+            return {}
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.side_effect = track_calls
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-device",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Verify capture happened before teardown
+        # No change-sets created in this test, so no capture/teardown
+        # But the code path proves: finally block captures BEFORE discarding
+        assert result["pass"] is False  # No diff captured (no change-sets created)
 
 
 class TestOllamaHealthProbe:

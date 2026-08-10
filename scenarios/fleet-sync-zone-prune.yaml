@@ -1,5 +1,6 @@
 id: fleet-sync-zone-prune
 vendor: junos
+domain: security zones
 setup: |
   # Source has zone with interface bindings
   set security zones security-zone trust interfaces ge-0/0/0.0
@@ -16,4 +17,12 @@ expected_calls:
   - tool: create_junos_change_set
 forbidden_calls:
   - tool: apply_junos_change_set
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  staged_diff_contains:
+    - "security-zone trust"
+    - "host-inbound-traffic"
+    - "ping"
+  staged_diff_must_not_contain:
+    - "interfaces ge-0/0/0"
+  must_not_commit: true

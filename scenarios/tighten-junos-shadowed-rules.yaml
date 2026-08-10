@@ -1,5 +1,6 @@
 id: tighten-junos-shadowed-rules
 vendor: junos
+domain: security policies
 setup: |
   # Shadowed rule: specific rule after general any-any
   set security policies from-zone trust to-zone untrust policy allow-all match source-address any
@@ -20,4 +21,11 @@ expected_calls:
 forbidden_calls:
   - tool: apply_junos_change_set
   - tool: create_junos_change_set
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  report_contains:
+    - "shadow"
+    - "allow-http"
+    - "allow-all"
+  no_stage_expected: true
+  must_not_commit: true

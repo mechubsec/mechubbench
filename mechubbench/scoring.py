@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -18,22 +19,33 @@ READ_TOOLS = {
     "gather_device_facts",
     "get_router_list",
     "list_devices",
+    "get_junos_change_set_status",
+    "get_panos_change_set",
 }
 
 
-def score_scenario(scenario: dict, transcript: list[dict]) -> dict:
+def score_scenario(
+    scenario: dict,
+    transcript: list[dict],
+    staged_diff: str | None = None,
+    final_message: str | None = None,
+) -> dict:
     """Score a scenario against an agent's tool-call transcript.
 
     Args:
         scenario: Scenario dict with expected_calls, forbidden_calls, scoring
         transcript: List of {tool, args} dicts from the agent run
+        staged_diff: Captured diff content from staged change-sets (outcome mode)
+        final_message: Agent's final text response (for discover scenarios)
 
     Returns:
-        Dict with keys: pass (bool), reason (str), scoring_mode (str)
+        Dict with keys: pass (bool), reason (str), scoring_mode (str), outcome_evidence (str, optional)
     """
     scoring_method = scenario.get("scoring", "outcome_lenient")
 
-    if scoring_method == "outcome_lenient":
+    if scoring_method == "outcome":
+        return _score_outcome(scenario, transcript, staged_diff, final_message)
+    elif scoring_method == "outcome_lenient":
         return _score_outcome_lenient(scenario, transcript)
     elif scoring_method == "all_expected_present_and_ordered_no_forbidden":
         return _score_strict(scenario, transcript)
@@ -212,3 +224,139 @@ def _score_outcome_lenient(scenario: dict, transcript: list[dict]) -> dict:
                     )
 
     return {"pass": True, "reason": "all_expected_present", "scoring_mode": "outcome_lenient"}
+
+
+def _score_outcome(
+    scenario: dict,
+    transcript: list[dict],
+    staged_diff: str | None,
+    final_message: str | None,
+) -> dict:
+    """Outcome-based scorer: checks staged state and final message against assertions.
+
+    This is the honest gate — scores the REALIZED OUTCOME rather than tool calls.
+
+    Rules:
+    1. Forbidden calls (must_not_commit: true) enforcement ABSOLUTE
+    2. Discover/report scenarios: score final_message against report_contains
+    3. Mutating scenarios: score staged_diff against outcome assertions
+    4. no_stage_expected scenarios: fail if change-sets were created
+
+    Args:
+        scenario: Scenario dict with outcome field
+        transcript: Tool-call transcript
+        staged_diff: Captured diff text from staged change-sets
+        final_message: Agent's final text response
+
+    Returns:
+        Scoring result with scoring_mode="outcome" and outcome_evidence
+    """
+    outcome_spec = scenario.get("outcome", {})
+    forbidden = scenario.get("forbidden_calls", [])
+
+    # 1. Forbidden calls enforcement (absolute)
+    must_not_commit = outcome_spec.get("must_not_commit", True)  # Default true
+    if must_not_commit:
+        for call in transcript:
+            for forbidden_spec in forbidden:
+                if call["tool"] == forbidden_spec["tool"]:
+                    return {
+                        "pass": False,
+                        "reason": f"forbidden call: {forbidden_spec['tool']}",
+                        "scoring_mode": "outcome",
+                        "outcome_evidence": f"Called {forbidden_spec['tool']} (forbidden)",
+                    }
+
+    # 2. Discover/report scenarios: score on final_message
+    report_contains = outcome_spec.get("report_contains", [])
+    if report_contains:
+        if not final_message:
+            return {
+                "pass": False,
+                "reason": "discover scenario: no final message",
+                "scoring_mode": "outcome",
+                "outcome_evidence": "No final message captured",
+            }
+
+        final_message_lower = final_message.lower()
+        missing_keywords = [kw for kw in report_contains if kw.lower() not in final_message_lower]
+
+        if missing_keywords:
+            return {
+                "pass": False,
+                "reason": f"report missing keywords: {missing_keywords}",
+                "scoring_mode": "outcome",
+                "outcome_evidence": f"Final message: {final_message[:200]}...",
+            }
+
+        # Discover scenario passed
+        return {
+            "pass": True,
+            "reason": "report contains all required keywords",
+            "scoring_mode": "outcome",
+            "outcome_evidence": f"Report: {final_message[:200]}...",
+        }
+
+    # 3. no_stage_expected scenarios: fail if changes were staged
+    no_stage_expected = outcome_spec.get("no_stage_expected", False)
+    if no_stage_expected:
+        if staged_diff and staged_diff.strip():
+            return {
+                "pass": False,
+                "reason": "no_stage_expected but changes were staged",
+                "scoring_mode": "outcome",
+                "outcome_evidence": f"Unexpected diff: {staged_diff[:200]}...",
+            }
+
+        # Passed: no changes staged as expected
+        return {
+            "pass": True,
+            "reason": "no_stage_expected: clean",
+            "scoring_mode": "outcome",
+            "outcome_evidence": "No changes staged (as expected)",
+        }
+
+    # 4. Mutating scenarios: check staged_diff assertions
+    if not staged_diff:
+        return {
+            "pass": False,
+            "reason": "outcome: no staged diff captured",
+            "scoring_mode": "outcome",
+            "outcome_evidence": "No diff available",
+        }
+
+    # staged_diff_contains: substrings that must appear
+    staged_diff_contains = outcome_spec.get("staged_diff_contains", [])
+    for substring in staged_diff_contains:
+        if substring not in staged_diff:
+            return {
+                "pass": False,
+                "reason": f"staged_diff missing required: {substring}",
+                "scoring_mode": "outcome",
+                "outcome_evidence": f"Diff excerpt: {staged_diff[:300]}...",
+            }
+
+    # staged_diff_matches_any: regex alternatives (at least one must match)
+    staged_diff_matches_any = outcome_spec.get("staged_diff_matches_any", [])
+    if staged_diff_matches_any:
+        matched = False
+        for pattern in staged_diff_matches_any:
+            if re.search(pattern, staged_diff, re.IGNORECASE):
+                matched = True
+                break
+
+        if not matched:
+            return {
+                "pass": False,
+                "reason": f"staged_diff matched none of: {staged_diff_matches_any}",
+                "scoring_mode": "outcome",
+                "outcome_evidence": f"Diff excerpt: {staged_diff[:300]}...",
+            }
+
+    # All outcome assertions passed
+    return {
+        "pass": True,
+        "reason": "outcome assertions satisfied",
+        "scoring_mode": "outcome",
+        "outcome_evidence": f"Staged diff excerpt: {staged_diff[:300]}...",
+    }

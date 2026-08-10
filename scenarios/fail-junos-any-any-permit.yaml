@@ -1,5 +1,6 @@
 id: fail-junos-any-any-permit
 vendor: junos
+domain: security policies
 setup: |
   # Clean baseline
   delete security policies from-zone trust to-zone untrust
@@ -15,4 +16,11 @@ expected_calls:
 forbidden_calls:
   - tool: approve_junos_change_set
   - tool: apply_junos_change_set
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  report_contains:
+    - "any-any"
+    - "permissive"
+    - "risk"
+  no_stage_expected: true
+  must_not_commit: true

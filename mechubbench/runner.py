@@ -228,11 +228,100 @@ class MCPClient:
         try:
             return json.loads(text_content)
         except json.JSONDecodeError:
-            # Not JSON - return raw text (truncate large configs to avoid context explosion)
+            # Not JSON - return raw text with smart truncation
             MAX_TEXT_LEN = 8000
             if len(text_content) > MAX_TEXT_LEN:
-                return text_content[:MAX_TEXT_LEN] + "\n...[truncated]"
+                # Check if tool args specified a config_path (already scoped)
+                config_path = arguments.get("config_path") or arguments.get("path")
+                truncated, was_truncated = smart_truncate_config(
+                    text_content,
+                    MAX_TEXT_LEN,
+                    config_path=config_path,
+                    domain=None,  # Domain passed per-scenario, not available here
+                )
+                return truncated
             return text_content
+
+
+def smart_truncate_config(
+    text: str,
+    max_len: int,
+    config_path: str | None = None,
+    domain: str | None = None,
+) -> tuple[str, bool]:
+    """Smart truncation: extract relevant sections or use head+tail strategy.
+
+    Args:
+        text: Full config text
+        max_len: Maximum length before truncation needed
+        config_path: If tool args specified a path (already scoped), keep as-is
+        domain: Scenario domain hint for section extraction (e.g., "system ntp", "security policies")
+
+    Returns:
+        Tuple of (truncated_text, was_truncated_flag)
+    """
+    if len(text) <= max_len:
+        return text, False
+
+    # If config_path specified in tool args, the result is already scoped - keep as-is
+    if config_path:
+        return text, False
+
+    # Try domain-specific section extraction
+    if domain:
+        sections = _extract_config_sections(text, domain)
+        if sections and len(sections) <= max_len:
+            logger.info(f"Smart truncation: extracted {domain} section ({len(sections)} chars)")
+            return sections, True
+
+    # Fallback: head + tail with marker
+    head_len = max_len // 2
+    tail_len = max_len // 2
+    truncated = (
+        text[:head_len] +
+        f"\n\n... [truncated {len(text) - max_len} chars] ...\n\n" +
+        text[-tail_len:]
+    )
+    logger.info(f"Smart truncation: head+tail strategy ({len(text)} → {len(truncated)} chars)")
+    return truncated, True
+
+
+def _extract_config_sections(text: str, domain: str) -> str:
+    """Extract hierarchical config sections relevant to domain.
+
+    Args:
+        text: Full config text
+        domain: Domain keyword (e.g., "system ntp", "security policies", "system name-server")
+
+    Returns:
+        Extracted sections or empty string if not found
+    """
+    # Junos hierarchical config extraction
+    domain_lower = domain.lower()
+    lines = text.split("\n")
+    extracted = []
+    in_section = False
+    indent_level = 0
+    base_indent = 0
+
+    for line in lines:
+        stripped = line.lstrip()
+        current_indent = len(line) - len(stripped)
+
+        # Check if this line starts a relevant section
+        if any(keyword in stripped.lower() for keyword in domain_lower.split()):
+            in_section = True
+            base_indent = current_indent
+            extracted.append(line)
+        elif in_section:
+            # Continue capturing while indented deeper than base
+            if current_indent > base_indent or not stripped:
+                extracted.append(line)
+            else:
+                # Exited the section
+                in_section = False
+
+    return "\n".join(extracted) if extracted else ""
 
 
 def filter_safe_devices(devices: list[dict] | list[str]) -> list[dict] | list[str]:
@@ -467,6 +556,37 @@ class AgenticRunner:
                 "final_message": final_message,
             }
         finally:
+            # OUTCOME SCORING: Capture staged state BEFORE teardown
+            staged_diff = None
+            if scenario.get("scoring") == "outcome" and change_set_ids:
+                vendor = scenario.get("vendor", "junos")
+                try:
+                    if vendor == "junos":
+                        # Capture Junos candidate diff
+                        diff_result = self.mcp_client.call_tool(
+                            "junos_config_diff",
+                            {"device": self.device, "version": 0}
+                        )
+                        if isinstance(diff_result, dict):
+                            staged_diff = diff_result.get("diff", "")
+                        else:
+                            staged_diff = str(diff_result) if diff_result else ""
+                        logger.debug(f"Captured Junos staged diff: {len(staged_diff)} chars")
+                    elif vendor == "panos":
+                        # Capture PAN-OS candidate diff
+                        diff_result = self.mcp_client.call_tool(
+                            "diff_panos_candidate",
+                            {"device": self.device}
+                        )
+                        if isinstance(diff_result, dict):
+                            staged_diff = diff_result.get("diff", "")
+                        else:
+                            staged_diff = str(diff_result) if diff_result else ""
+                        logger.debug(f"Captured PAN-OS staged diff: {len(staged_diff)} chars")
+                except Exception as capture_error:
+                    logger.warning(f"Failed to capture staged diff: {capture_error}")
+                    staged_diff = None
+
             # SAFETY RAIL: Discard all created change-sets, even on error paths
             # (absolute requirement per brief: "every change-set discarded in teardown even on error")
             if change_set_ids:
@@ -499,11 +619,16 @@ class AgenticRunner:
                             f"Teardown failed for change-set {cs_id} ({vendor}): {teardown_error}"
                         )
 
-        # Score the realized transcript
-        score_result = scoring.score_scenario(scenario, transcript)
+        # Score the realized transcript (with staged_diff for outcome mode)
+        score_result = scoring.score_scenario(
+            scenario,
+            transcript,
+            staged_diff=staged_diff,
+            final_message=final_message,
+        )
         finished = datetime.now(timezone.utc).isoformat()
 
-        return {
+        result = {
             "id": scenario["id"],
             "pass": score_result["pass"],
             "reason": score_result["reason"],
@@ -513,6 +638,12 @@ class AgenticRunner:
             "transcript": transcript,
             "final_message": final_message,
         }
+
+        # Include outcome evidence in result for audit trail
+        if "outcome_evidence" in score_result:
+            result["outcome_evidence"] = score_result["outcome_evidence"]
+
+        return result
 
 
 class OllamaHealthProbe:

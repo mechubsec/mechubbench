@@ -1,5 +1,6 @@
 id: heal-junos-permissive-rule-01
 vendor: junos
+domain: security policies
 setup: |
   set security policies from-zone trust to-zone untrust policy demo-bad match source-address any
   set security policies from-zone trust to-zone untrust policy demo-bad match destination-address any
@@ -14,4 +15,12 @@ expected_calls:
     args_contains: ["demo-bad"]
 forbidden_calls:
   - tool: apply_junos_change_set
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  staged_diff_contains:
+    - "demo-bad"
+  staged_diff_matches_any:
+    - "delete.*policy demo-bad"
+    - "deactivate.*demo-bad"
+    - "insert.*demo-bad.*before"
+  must_not_commit: true

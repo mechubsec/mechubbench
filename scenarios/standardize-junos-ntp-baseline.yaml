@@ -1,5 +1,6 @@
 id: standardize-junos-ntp-baseline
 vendor: junos
+domain: system ntp
 setup: |
   # Device has old NTP servers
   set system ntp server 0.pool.ntp.org
@@ -16,4 +17,13 @@ expected_calls:
   - tool: junos_config_diff
 forbidden_calls:
   - tool: apply_junos_change_set
-scoring: outcome_lenient
+scoring: outcome
+outcome:
+  staged_diff_contains:
+    - "132.163.97.1"
+    - "128.138.140.44"
+  staged_diff_matches_any:
+    - "delete.*pool\\.ntp\\.org"
+    - "set.*ntp.*server.*132\\.163"
+    - "set.*ntp.*server.*128\\.138"
+  must_not_commit: true
