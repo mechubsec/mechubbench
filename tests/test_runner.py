@@ -220,7 +220,27 @@ class TestDeviceAllowlist:
 
     def test_filter_excludes_prod_and_outpost(self):
         """Exclude devices with 'prod' or 'outpost' in name (case-insensitive)."""
-        devices = [
+        # Test with bare list of strings (REAL get_router_list format)
+        device_names = [
+            "test-vsrx",
+            "vsrx-prod",
+            "vSRX-PROD-2",
+            "preprovisionedOutpost",
+            "lab-vsrx-01",
+            "outpost-backup",
+        ]
+
+        allowed = runner.filter_safe_devices(device_names)
+
+        assert "test-vsrx" in allowed
+        assert "lab-vsrx-01" in allowed
+        assert "vsrx-prod" not in allowed
+        assert "vSRX-PROD-2" not in allowed
+        assert "preprovisionedOutpost" not in allowed
+        assert "outpost-backup" not in allowed
+
+        # Also test with dict format (defensive compatibility)
+        devices_dict = [
             {"name": "test-vsrx", "model": "vSRX"},
             {"name": "vsrx-prod", "model": "vSRX"},
             {"name": "vSRX-PROD-2", "model": "vSRX"},
@@ -229,8 +249,8 @@ class TestDeviceAllowlist:
             {"name": "outpost-backup", "model": "vSRX"},
         ]
 
-        allowed = runner.filter_safe_devices(devices)
-        names = [d["name"] for d in allowed]
+        allowed_dict = runner.filter_safe_devices(devices_dict)
+        names = [d["name"] for d in allowed_dict]
 
         assert "test-vsrx" in names
         assert "lab-vsrx-01" in names

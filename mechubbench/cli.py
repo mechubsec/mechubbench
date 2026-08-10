@@ -73,19 +73,29 @@ def cmd_run(args: argparse.Namespace) -> int:
 
         try:
             device_list_result = mcp_client.call_tool("get_router_list", {})
-            all_devices = device_list_result.get("routers", [])
+
+            # Handle both response shapes: bare list (actual) or dict with "routers" key
+            if isinstance(device_list_result, list):
+                # Bare list of device names: ["br1-fw", "br2-fw", ...]
+                device_names = device_list_result
+            elif isinstance(device_list_result, dict):
+                # Dict shape: {"routers": [...]}
+                device_names = device_list_result.get("routers", [])
+            else:
+                logger.error(f"Unexpected device list format: {type(device_list_result)}")
+                return 1
         except runner.MCPError as e:
             logger.error(f"Failed to get device list from MCP: {e}")
             return 1
 
-        # Filter to safe devices
-        safe_devices = runner.filter_safe_devices(all_devices)
+        # Filter to safe devices (expects list of name strings or dicts with "name" key)
+        safe_devices = runner.filter_safe_devices(device_names)
         if not safe_devices:
             logger.error("No safe devices available (all filtered by prod/outpost exclusion)")
             return 1
 
         # Use first safe device
-        device = safe_devices[0]["name"]
+        device = safe_devices[0] if isinstance(safe_devices[0], str) else safe_devices[0]["name"]
         logger.info(f"Selected device: {device} (from {len(safe_devices)} safe devices)")
 
         manifest = runner.run_all_scenarios_agentic(

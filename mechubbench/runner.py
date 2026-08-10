@@ -228,20 +228,27 @@ class MCPClient:
             raise MCPError(f"Failed to parse tool result JSON: {e}")
 
 
-def filter_safe_devices(devices: list[dict]) -> list[dict]:
+def filter_safe_devices(devices: list[dict] | list[str]) -> list[dict] | list[str]:
     """Filter device list to exclude prod/outpost devices (safety rail).
 
     Args:
-        devices: List of device dicts with 'name' key
+        devices: List of device dicts with 'name' key, or bare list of device name strings
 
     Returns:
-        Filtered list excluding devices with 'prod' or 'outpost' in name (case-insensitive)
+        Filtered list (same type as input) excluding devices with 'prod' or 'outpost' in name (case-insensitive)
     """
     forbidden_patterns = ["prod", "outpost"]
     safe_devices = []
 
     for device in devices:
-        name_lower = device["name"].lower()
+        # Handle both string and dict formats
+        if isinstance(device, str):
+            name_lower = device.lower()
+        elif isinstance(device, dict):
+            name_lower = device["name"].lower()
+        else:
+            continue  # Skip unknown types
+
         if not any(pattern in name_lower for pattern in forbidden_patterns):
             safe_devices.append(device)
 
