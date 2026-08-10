@@ -492,8 +492,9 @@ class AgenticRunner:
                     tool_name = call["tool"]
                     tool_args = call["args"]
 
-                    # Add to transcript
-                    transcript.append({"tool": tool_name, "args": tool_args})
+                    # Start transcript entry
+                    transcript_entry = {"tool": tool_name, "args": tool_args}
+                    tool_error = None
 
                     # Safety rail: never execute forbidden tools
                     if tool_name in self.forbidden_tools:
@@ -501,18 +502,27 @@ class AgenticRunner:
                         tool_result = {
                             "error": f"Tool {tool_name} is forbidden in benchmark mode"
                         }
+                        tool_error = f"forbidden: {tool_name}"
                     else:
                         # Execute via MCP
                         try:
                             tool_result = self.mcp_client.call_tool(tool_name, tool_args)
 
-                            # Track change-set IDs for teardown
+                            # Track change-set IDs for teardown (only on SUCCESS)
                             if tool_name in ("create_junos_change_set", "create_panos_change_set"):
                                 if isinstance(tool_result, dict) and "change_set_id" in tool_result:
                                     change_set_ids.append(tool_result["change_set_id"])
                         except MCPError as e:
                             logger.error(f"MCP error executing {tool_name}: {e}")
                             tool_result = {"error": str(e)}
+                            # Surface server rejections distinctly (e.g., deserialization/validation errors)
+                            tool_error = str(e)
+
+                    # Add tool_error to transcript if present
+                    if tool_error:
+                        transcript_entry["tool_error"] = tool_error
+
+                    transcript.append(transcript_entry)
 
                     # Append tool result to conversation
                     tool_message = {

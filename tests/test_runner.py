@@ -933,6 +933,121 @@ class TestAgenticRunner:
         assert teardown_call[0][0] == "discard_panos_candidate"
         assert teardown_call[0][1] == {"device": "test-pa"}
 
+    def test_tool_error_recorded_on_rejection(self):
+        """Tool call rejection (e.g., deserialization error) recorded as tool_error in transcript."""
+        scenario = {
+            "id": "test-error",
+            "vendor": "junos",
+            "prompt": "Create change",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "outcome_lenient",
+        }
+
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: try to create (will fail)
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"device": "test", "config": "set test"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Failed"},
+                    "finish_reason": "stop"
+                }]
+            }
+        ]
+
+        mock_mcp = Mock()
+        # Simulate server rejection (missing expected_fingerprint)
+        mock_mcp.call_tool.side_effect = runner.MCPError(
+            "MCP error: missing field `expected_fingerprint` at line 1 column 123"
+        )
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-device",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should have recorded tool_error in transcript
+        assert len(result["transcript"]) == 1
+        assert result["transcript"][0]["tool"] == "create_junos_change_set"
+        assert "tool_error" in result["transcript"][0]
+        assert "expected_fingerprint" in result["transcript"][0]["tool_error"]
+
+    def test_change_set_not_tracked_on_error(self):
+        """Change-set ID not tracked when create fails (no success response)."""
+        scenario = {
+            "id": "test-no-track",
+            "vendor": "junos",
+            "prompt": "Create change",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "outcome_lenient",
+        }
+
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: try to create (will fail)
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"device": "test", "config": "set test"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Failed"},
+                    "finish_reason": "stop"
+                }]
+            }
+        ]
+
+        mock_mcp = Mock()
+        # Create fails - no change_set_id in response
+        mock_mcp.call_tool.side_effect = runner.MCPError("validation failed")
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-device",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should NOT have called discard (no change-set to discard)
+        assert mock_mcp.call_tool.call_count == 1  # Only the failed create
+
 
 class TestDeviceTemplateSubstitution:
     """Test {{device}} template substitution in scenarios."""

@@ -162,6 +162,75 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_tools(args: argparse.Namespace) -> int:
+    """Export live tool schemas from MCP server to eliminate source-extraction drift.
+
+    Args:
+        args: Parsed CLI arguments
+
+    Returns:
+        Exit code (0 for success)
+    """
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    output_path = Path(args.out)
+
+    # Get MCP token from args or env
+    mcp_token = args.mcp_token or os.environ.get("RUSTJUNOSMCP_TOKEN")
+    if not mcp_token:
+        logger.error("MCP token required: pass --mcp-token or set RUSTJUNOSMCP_TOKEN env var")
+        return 1
+
+    # Create MCP client
+    try:
+        mcp_client = runner.MCPClient(args.mcp_endpoint, mcp_token)
+        logger.info(f"Connected to MCP endpoint: {args.mcp_endpoint}")
+    except Exception as e:
+        logger.error(f"Failed to connect to MCP endpoint: {e}")
+        return 1
+
+    # Fetch tools/list from MCP server
+    try:
+        # MCP protocol: tools/list request
+        response = mcp_client._post({
+            "jsonrpc": "2.0",
+            "id": mcp_client._request_id,
+            "method": "tools/list",
+            "params": {}
+        }, session_id=mcp_client._session_id)
+
+        data = mcp_client._parse_response_body(response)
+
+        if "error" in data:
+            logger.error(f"MCP error: {data['error'].get('message', 'Unknown error')}")
+            return 1
+
+        result = data.get("result", {})
+        tools_list = result.get("tools", [])
+
+        if not tools_list:
+            logger.warning("No tools returned from MCP server")
+            return 1
+
+        logger.info(f"Fetched {len(tools_list)} tool(s) from MCP server")
+
+        # Note: tools/list may be scope-filtered by token
+        # The operator exports with the bench token so the file matches
+        # exactly what the agent may call
+        logger.info(f"Note: Tool list is scope-filtered by the provided token")
+
+        # Write to output file
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(tools_list, indent=2))
+        logger.info(f"Exported tools to {output_path}")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Failed to export tools: {e}")
+        return 1
+
+
 def cmd_lint(args: argparse.Namespace) -> int:
     """Validate scenario files against schema.
 
@@ -309,6 +378,27 @@ def main() -> None:
         help="Ollama keep-alive duration (default: 30m)",
     )
     run_parser.set_defaults(func=cmd_run)
+
+    # export-tools subcommand
+    export_parser = subparsers.add_parser(
+        "export-tools",
+        help="Export live tool schemas from MCP server (kills source-extraction drift)"
+    )
+    export_parser.add_argument(
+        "--mcp-endpoint",
+        required=True,
+        help="MCP endpoint URL (e.g., http://198.51.100.194:30031/mcp)",
+    )
+    export_parser.add_argument(
+        "--mcp-token",
+        help="MCP bearer token (or set RUSTJUNOSMCP_TOKEN env var)",
+    )
+    export_parser.add_argument(
+        "--out",
+        required=True,
+        help="Output path for tools JSON (e.g., tools/junos-tools.json)",
+    )
+    export_parser.set_defaults(func=cmd_export_tools)
 
     # lint subcommand
     lint_parser = subparsers.add_parser("lint", help="Validate scenario files")
