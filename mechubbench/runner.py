@@ -950,12 +950,12 @@ def run_all_scenarios_agentic(
                         {"device": device, "version": 1, "commit": True}
                     )
 
-                    # Verify clean rollback (empty candidate diff)
-                    diff_result = mcp_client.call_tool("junos_config_diff", {"device": device})
+                    # Verify clean rollback (candidate vs running, version=0)
+                    diff_result = mcp_client.call_tool("junos_config_diff", {"device": device, "version": 0})
                     if isinstance(diff_result, dict):
                         diff_text = diff_result.get("diff", "")
                     else:
-                        diff_text = str(diff_result)
+                        diff_text = str(diff_result) if diff_result else ""
 
                     if diff_text.strip():
                         logger.error(

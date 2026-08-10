@@ -1036,7 +1036,7 @@ class TestScenarioSetupTeardown:
 
         # Mock agent MCP client
         mock_mcp = Mock()
-        mock_mcp.call_tool.return_value = ""  # junos_config_diff (empty = clean)
+        mock_mcp.call_tool.return_value = ""  # junos_config_diff with version=0 (empty = clean)
 
         # Mock LLM
         mock_llm = Mock()
@@ -1069,9 +1069,18 @@ class TestScenarioSetupTeardown:
         # Teardown
         mock_setup.call_tool("rollback_config", {"device": "test-device", "version": 1, "commit": True})
 
+        # Verify rollback
+        verify_call_result = mock_mcp.call_tool("junos_config_diff", {"device": "test-device", "version": 0})
+
         # Verify setup was called before scenario run
         assert mock_setup.call_tool.call_count == 2
         assert mock_setup.call_tool.call_args_list[0][0][0] == "load_and_commit_config"
+
+        # Verify rollback verification call includes version: 0
+        assert mock_mcp.call_tool.call_count == 1
+        verify_call_args = mock_mcp.call_tool.call_args_list[0]
+        assert verify_call_args[0][0] == "junos_config_diff"
+        assert verify_call_args[0][1] == {"device": "test-device", "version": 0}
 
     def test_agent_never_sees_setup_client(self):
         """AgenticRunner is constructed with only the agent client, never setup client."""
