@@ -40,6 +40,11 @@
             "items": {
               "type": "string"
             }
+          },
+          "required": {
+            "type": "string",
+            "enum": ["strict"],
+            "description": "Opt into strict args enforcement (outcome_lenient mode only)"
           }
         }
       }
@@ -60,8 +65,8 @@
     },
     "scoring": {
       "type": "string",
-      "enum": ["all_expected_present_and_ordered_no_forbidden"],
-      "description": "Scoring algorithm to apply"
+      "enum": ["outcome_lenient", "all_expected_present_and_ordered_no_forbidden"],
+      "description": "Scoring algorithm: outcome_lenient (default, presence-only, read args advisory) or all_expected_present_and_ordered_no_forbidden (strict, ordered, all args enforced)"
     }
   }
 }

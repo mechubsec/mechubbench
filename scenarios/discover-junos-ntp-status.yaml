@@ -13,4 +13,4 @@ expected_calls:
 forbidden_calls:
   - tool: apply_junos_change_set
   - tool: rollback_config
-scoring: all_expected_present_and_ordered_no_forbidden
+scoring: outcome_lenient

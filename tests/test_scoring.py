@@ -138,3 +138,101 @@ def test_empty_expected_passes_with_clean_transcript():
     transcript = [{"tool": "get_junos_config", "args": {"device": "srx1"}}]
     result = scoring.score_scenario(scenario, transcript)
     assert result["pass"] is True
+
+
+# outcome_lenient mode tests
+
+
+def test_lenient_presence_without_order_passes():
+    """Lenient mode: expected calls present in any order -> PASS"""
+    scenario = {
+        "expected_calls": [
+            {"tool": "get_junos_config"},
+            {"tool": "create_junos_change_set"},
+        ],
+        "forbidden_calls": [],
+        "scoring": "outcome_lenient",
+    }
+    transcript = [
+        {"tool": "create_junos_change_set", "args": {"config": "set system"}},
+        {"tool": "get_junos_config", "args": {"device": "srx1"}},
+    ]
+    result = scoring.score_scenario(scenario, transcript)
+    assert result["pass"] is True
+    assert result["scoring_mode"] == "outcome_lenient"
+
+
+def test_lenient_forbidden_still_fails():
+    """Lenient mode: forbidden call enforcement unchanged -> FAIL"""
+    scenario = {
+        "expected_calls": [{"tool": "get_junos_config"}],
+        "forbidden_calls": [{"tool": "load_and_commit_config"}],
+        "scoring": "outcome_lenient",
+    }
+    transcript = [
+        {"tool": "get_junos_config", "args": {"device": "srx1"}},
+        {"tool": "load_and_commit_config", "args": {"device": "srx1", "config": "..."}},
+    ]
+    result = scoring.score_scenario(scenario, transcript)
+    assert result["pass"] is False
+    assert "forbidden" in result["reason"].lower()
+    assert result["scoring_mode"] == "outcome_lenient"
+
+
+def test_lenient_read_args_advisory():
+    """Lenient mode: args_contains on read tools is advisory (logged, not failed)"""
+    scenario = {
+        "expected_calls": [
+            {"tool": "get_junos_config", "args_contains": ["format=json"]},
+        ],
+        "forbidden_calls": [],
+        "scoring": "outcome_lenient",
+    }
+    # Model fetched full config without format filter (legitimate alternate path)
+    transcript = [
+        {"tool": "get_junos_config", "args": {"device": "srx1"}},
+    ]
+    result = scoring.score_scenario(scenario, transcript)
+    # Should PASS (args advisory on read tools)
+    assert result["pass"] is True
+    assert result["scoring_mode"] == "outcome_lenient"
+
+
+def test_lenient_mutating_args_enforced():
+    """Lenient mode: args_contains on mutating calls still enforced -> FAIL if missing"""
+    scenario = {
+        "expected_calls": [
+            {"tool": "create_junos_change_set", "args_contains": ["system host-name"]},
+        ],
+        "forbidden_calls": [],
+        "scoring": "outcome_lenient",
+    }
+    # Model called create but with different config
+    transcript = [
+        {"tool": "create_junos_change_set", "args": {"config": "set interfaces ge-0/0/0"}},
+    ]
+    result = scoring.score_scenario(scenario, transcript)
+    # Should FAIL (mutating tool, args enforced)
+    assert result["pass"] is False
+    assert "args_contains" in result["reason"].lower()
+    assert result["scoring_mode"] == "outcome_lenient"
+
+
+def test_lenient_strict_override():
+    """Lenient mode: required: strict on a call opts back into full args enforcement"""
+    scenario = {
+        "expected_calls": [
+            {"tool": "get_junos_config", "args_contains": ["format=json"], "required": "strict"},
+        ],
+        "forbidden_calls": [],
+        "scoring": "outcome_lenient",
+    }
+    # Model fetched without format filter
+    transcript = [
+        {"tool": "get_junos_config", "args": {"device": "srx1"}},
+    ]
+    result = scoring.score_scenario(scenario, transcript)
+    # Should FAIL (strict-required overrides read-tool advisory)
+    assert result["pass"] is False
+    assert "args_contains" in result["reason"].lower()
+    assert result["scoring_mode"] == "outcome_lenient"

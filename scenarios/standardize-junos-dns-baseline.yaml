@@ -16,4 +16,4 @@ expected_calls:
   - tool: junos_config_diff
 forbidden_calls:
   - tool: apply_junos_change_set
-scoring: all_expected_present_and_ordered_no_forbidden
+scoring: outcome_lenient
