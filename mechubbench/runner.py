@@ -255,6 +255,29 @@ def filter_safe_devices(devices: list[dict] | list[str]) -> list[dict] | list[st
     return safe_devices
 
 
+def probe_device_liveness(mcp_client: MCPClient, device: str, timeout: int = 10) -> None:
+    """Probe device liveness by calling gather_device_facts.
+
+    Args:
+        mcp_client: MCP client instance
+        device: Device name to probe
+        timeout: Probe timeout in seconds (default 10)
+
+    Raises:
+        MCPError: If device is unreachable or probe fails
+    """
+    # Temporarily override client timeout for this probe
+    original_timeout = mcp_client.timeout
+    mcp_client.timeout = timeout
+
+    try:
+        # gather_device_facts is a quick check that requires the device to respond
+        mcp_client.call_tool("gather_device_facts", {"device": device})
+    finally:
+        # Restore original timeout
+        mcp_client.timeout = original_timeout
+
+
 class AgenticRunner:
     """Agentic loop runner: executes tool calls against real devices via MCP."""
 

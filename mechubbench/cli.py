@@ -94,9 +94,31 @@ def cmd_run(args: argparse.Namespace) -> int:
             logger.error("No safe devices available (all filtered by prod/outpost exclusion)")
             return 1
 
-        # Use first safe device
-        device = safe_devices[0] if isinstance(safe_devices[0], str) else safe_devices[0]["name"]
-        logger.info(f"Selected device: {device} (from {len(safe_devices)} safe devices)")
+        # Liveness probe: find first responsive device
+        logger.info(f"Probing {len(safe_devices)} safe device(s) for liveness...")
+        device = None
+        skipped_dead = []
+
+        for candidate in safe_devices:
+            candidate_name = candidate if isinstance(candidate, str) else candidate["name"]
+            logger.debug(f"Probing {candidate_name}...")
+
+            try:
+                # Quick liveness check via gather_device_facts with short timeout
+                runner.probe_device_liveness(mcp_client, candidate_name, timeout=10)
+                device = candidate_name
+                logger.info(f"Selected live device: {device}")
+                break
+            except runner.MCPError as e:
+                logger.warning(f"Device {candidate_name} unreachable: {e}")
+                skipped_dead.append(candidate_name)
+
+        if not device:
+            logger.error(
+                f"No live safe devices found; tried: {', '.join(skipped_dead)}. "
+                "Lab devices may be powered off."
+            )
+            return 1
 
         manifest = runner.run_all_scenarios_agentic(
             scenarios=scenarios,

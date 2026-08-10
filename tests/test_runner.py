@@ -260,6 +260,107 @@ class TestDeviceAllowlist:
         assert "outpost-backup" not in names
 
 
+class TestDeviceLivenessProbe:
+    """Test device liveness probing."""
+
+    def test_probe_live_device_succeeds(self):
+        """Liveness probe succeeds for responsive device."""
+        # Mock MCP client that returns success
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "s1"}
+        init_response.json.return_value = {"jsonrpc": "2.0", "id": 0, "result": {}}
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
+
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
+
+        probe_response = Mock()
+        probe_response.headers = {"content-type": "application/json"}
+        probe_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "content": [{
+                    "type": "text",
+                    "text": json.dumps({"hostname": "test-device", "version": "1.0"})
+                }]
+            }
+        }
+        probe_response.raise_for_status = Mock()
+        probe_response.text = ""
+
+        with patch("httpx.post", side_effect=[init_response, initialized_response, probe_response]):
+            mcp_client = runner.MCPClient("http://test/mcp", "token")
+
+            # Should not raise
+            runner.probe_device_liveness(mcp_client, "test-device", timeout=10)
+
+    def test_probe_dead_device_raises_error(self):
+        """Liveness probe raises MCPError for unreachable device."""
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "s1"}
+        init_response.json.return_value = {"jsonrpc": "2.0", "id": 0, "result": {}}
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
+
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
+
+        # Probe fails with connection error
+        probe_error = httpx.ConnectError("Connection refused")
+
+        with patch("httpx.post", side_effect=[init_response, initialized_response, probe_error]):
+            mcp_client = runner.MCPClient("http://test/mcp", "token")
+
+            with pytest.raises(runner.MCPError):
+                runner.probe_device_liveness(mcp_client, "dead-device", timeout=10)
+
+    def test_probe_first_dead_second_live(self):
+        """Selection skips first dead device and selects second live one."""
+        # This simulates the CLI flow: first device fails probe, second succeeds
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "s1"}
+        init_response.json.return_value = {"jsonrpc": "2.0", "id": 0, "result": {}}
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
+
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
+
+        # First probe: connection error (dead device)
+        probe1_error = httpx.ConnectError("Connection timeout")
+
+        # Second probe: success (live device)
+        probe2_response = Mock()
+        probe2_response.headers = {"content-type": "application/json"}
+        probe2_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": {
+                "content": [{
+                    "type": "text",
+                    "text": json.dumps({"hostname": "live-device"})
+                }]
+            }
+        }
+        probe2_response.raise_for_status = Mock()
+        probe2_response.text = ""
+
+        with patch("httpx.post", side_effect=[init_response, initialized_response, probe1_error, probe2_response]):
+            mcp_client = runner.MCPClient("http://test/mcp", "token")
+
+            # First device should raise
+            with pytest.raises(runner.MCPError):
+                runner.probe_device_liveness(mcp_client, "dead-device", timeout=10)
+
+            # Second device should succeed
+            runner.probe_device_liveness(mcp_client, "live-device", timeout=10)
+
+
 class TestAgenticRunner:
     """Test agentic loop with tool execution."""
 

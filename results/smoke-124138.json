@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "run_id": "ad46bae8-9e7e-4e38-a2be-f732b2badb89",
+  "model": "qwen2.5:14b-instruct",
+  "corpus_git_sha": "1e48caba8a50e7feb40fc44641669868167cb64e",
+  "started": "2026-08-10T16:41:38.738216+00:00",
+  "finished": "2026-08-10T16:43:54.567454+00:00",
+  "results": [
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": false,
+      "reason": "runner_error: [Errno 110] Connection timed out",
+      "started": "2026-08-10T16:41:38.750047+00:00",
+      "finished": "2026-08-10T16:43:54.567417+00:00",
+      "transcript": []
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-br01"
+  ]
+}
