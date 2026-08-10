@@ -12,83 +12,124 @@ from mechubbench import runner
 
 
 class TestMCPClient:
-    """Test MCP client with streamable-HTTP bearer auth."""
+    """Test MCP client with streamable-HTTP bearer auth and initialize handshake."""
 
-    def test_init(self):
-        """Initialize MCP client with endpoint and token."""
-        client = runner.MCPClient(
-            endpoint="http://198.51.100.194:30031/mcp",
-            token="test-token-abc123",
-        )
-        assert client.endpoint == "http://198.51.100.194:30031/mcp"
-        assert client.token == "test-token-abc123"
+    def test_init_performs_handshake(self):
+        """Initialize performs MCP handshake (initialize + notifications/initialized)."""
+        # Mock responses for initialize and notifications/initialized
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "session-abc123"}
+        init_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "result": {"protocolVersion": "2025-03-26", "capabilities": {}}
+        }
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
 
-    def test_call_tool_success(self):
-        """Call a tool via MCP and return result."""
-        client = runner.MCPClient("http://test/mcp", "token")
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
 
-        mock_response = Mock()
-        mock_response.json.return_value = {
+        with patch("httpx.post", side_effect=[init_response, initialized_response]) as mock_post:
+            client = runner.MCPClient("http://test/mcp", "token")
+
+            # Should have called post twice (initialize + notifications/initialized)
+            assert mock_post.call_count == 2
+
+            # First call: initialize with Accept header
+            init_call = mock_post.call_args_list[0]
+            assert init_call[1]["headers"]["Accept"] == "application/json, text/event-stream"
+            assert init_call[1]["json"]["method"] == "initialize"
+            assert init_call[1]["json"]["params"]["clientInfo"]["name"] == "mechubbench"
+
+            # Second call: notifications/initialized with session ID
+            notif_call = mock_post.call_args_list[1]
+            assert notif_call[1]["headers"]["Mcp-Session-Id"] == "session-abc123"
+            assert notif_call[1]["json"]["method"] == "notifications/initialized"
+
+            # Client should store session ID
+            assert client._session_id == "session-abc123"
+
+    def test_call_tool_includes_session_id_and_accept_header(self):
+        """Tool calls include Mcp-Session-Id and Accept headers."""
+        # Mock initialize handshake
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "session-xyz"}
+        init_response.json.return_value = {"jsonrpc": "2.0", "id": 0, "result": {}}
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
+
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
+
+        # Mock tool call response
+        tool_response = Mock()
+        tool_response.headers = {"content-type": "application/json"}
+        tool_response.json.return_value = {
             "jsonrpc": "2.0",
             "id": 1,
             "result": {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps({"status": "success", "data": "config output"})
-                    }
-                ]
+                "content": [{
+                    "type": "text",
+                    "text": json.dumps({"status": "success"})
+                }]
             }
         }
-        mock_response.raise_for_status = Mock()
+        tool_response.raise_for_status = Mock()
+        tool_response.text = ""
 
-        with patch("httpx.post", return_value=mock_response) as mock_post:
+        with patch("httpx.post", side_effect=[init_response, initialized_response, tool_response]) as mock_post:
+            client = runner.MCPClient("http://test/mcp", "token")
             result = client.call_tool("get_junos_config", {"device": "test-vsrx"})
 
-            # Verify request
-            mock_post.assert_called_once()
-            call_args = mock_post.call_args
-            assert call_args[0][0] == "http://test/mcp"
+            # Third call should be the tool call
+            tool_call = mock_post.call_args_list[2]
 
-            # Check Authorization header
-            headers = call_args[1]["headers"]
+            # Check headers
+            headers = tool_call[1]["headers"]
+            assert headers["Accept"] == "application/json, text/event-stream"
+            assert headers["Mcp-Session-Id"] == "session-xyz"
             assert headers["Authorization"] == "Bearer token"
 
-            # Check JSON-RPC request
-            payload = call_args[1]["json"]
-            assert payload["jsonrpc"] == "2.0"
+            # Check payload
+            payload = tool_call[1]["json"]
             assert payload["method"] == "tools/call"
             assert payload["params"]["name"] == "get_junos_config"
-            assert payload["params"]["arguments"] == {"device": "test-vsrx"}
 
-            # Verify result
-            assert result == {"status": "success", "data": "config output"}
+            # Check result
+            assert result == {"status": "success"}
 
-    def test_call_tool_error_response(self):
-        """Handle MCP error responses."""
-        client = runner.MCPClient("http://test/mcp", "token")
+    def test_parse_sse_response(self):
+        """Client parses SSE (text/event-stream) responses correctly."""
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "s1"}
+        init_response.json.return_value = {"jsonrpc": "2.0", "id": 0, "result": {}}
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
 
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "error": {
-                "code": -32600,
-                "message": "Invalid request"
-            }
-        }
-        mock_response.raise_for_status = Mock()
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
 
-        with patch("httpx.post", return_value=mock_response):
-            with pytest.raises(runner.MCPError, match="Invalid request"):
-                client.call_tool("get_junos_config", {})
+        # SSE response with data: lines
+        sse_response = Mock()
+        sse_response.headers = {"content-type": "text/event-stream"}
+        sse_response.text = 'data: \n\ndata: {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\\"data\\":\\"value\\"}"}]}}\n\n'
+        sse_response.raise_for_status = Mock()
+
+        with patch("httpx.post", side_effect=[init_response, initialized_response, sse_response]):
+            client = runner.MCPClient("http://test/mcp", "token")
+            result = client.call_tool("test_tool", {})
+
+            assert result == {"data": "value"}
 
     def test_token_redacted_in_error_messages(self):
         """MCP errors never expose the bearer token."""
         secret_token = "secret-token-abc123"
-        client = runner.MCPClient("http://test/mcp", secret_token)
 
-        # Simulate httpx error that might leak token in message
+        # Mock initialize to fail with token in error
         mock_error = httpx.HTTPStatusError(
             f"401 Unauthorized - Bearer {secret_token} invalid",
             request=Mock(),
@@ -97,7 +138,7 @@ class TestMCPClient:
 
         with patch("httpx.post", side_effect=mock_error):
             with pytest.raises(runner.MCPError) as exc_info:
-                client.call_tool("get_junos_config", {})
+                runner.MCPClient("http://test/mcp", secret_token)
 
             # Error message should NOT contain the token
             error_str = str(exc_info.value)

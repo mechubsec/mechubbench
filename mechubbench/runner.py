@@ -25,20 +25,162 @@ class MCPError(Exception):
 
 
 class MCPClient:
-    """Client for rust-junosmcp MCP server via streamable-HTTP bearer auth."""
+    """Client for rust-junosmcp MCP server via streamable-HTTP bearer auth.
+
+    Implements MCP streamable-HTTP protocol (2025-03-26):
+    1. Send Accept: application/json, text/event-stream header
+    2. Initialize session first (capture mcp-session-id)
+    3. Send notifications/initialized
+    4. Include mcp-session-id on all subsequent requests
+    5. Parse SSE (data: lines) when Content-Type is text/event-stream
+    """
 
     def __init__(self, endpoint: str, token: str, timeout: int = 120):
-        """Initialize MCP client.
+        """Initialize MCP client and establish session.
 
         Args:
             endpoint: MCP endpoint URL (e.g. http://198.51.100.194:30031/mcp)
             token: Bearer token for authentication
             timeout: Request timeout in seconds
+
+        Raises:
+            MCPError: If initialization fails
         """
         self.endpoint = endpoint
         self.token = token
         self.timeout = timeout
         self._request_id = 0
+        self._session_id = None
+
+        # Perform MCP initialize handshake
+        self._initialize()
+
+    def _initialize(self) -> None:
+        """Perform MCP initialize + notifications/initialized handshake."""
+        # Step 1: Send initialize request
+        init_payload = {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "mechubbench",
+                    "version": "1.0"
+                }
+            }
+        }
+
+        init_response = self._post(init_payload, session_id=None)
+
+        # Capture session ID from response headers
+        self._session_id = init_response.headers.get("mcp-session-id") or init_response.headers.get("Mcp-Session-Id")
+        if not self._session_id:
+            raise MCPError("Server did not return Mcp-Session-Id header on initialize")
+
+        # Parse initialize response
+        init_data = self._parse_response_body(init_response)
+        if "error" in init_data:
+            raise MCPError(f"Initialize failed: {init_data['error'].get('message', 'Unknown error')}")
+
+        # Step 2: Send notifications/initialized
+        initialized_payload = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        }
+
+        try:
+            self._post(initialized_payload, session_id=self._session_id)
+        except Exception as e:
+            raise MCPError(f"notifications/initialized failed: {e}")
+
+    def _post(self, payload: dict, session_id: str | None) -> httpx.Response:
+        """Send POST request with proper MCP headers.
+
+        Args:
+            payload: JSON-RPC payload
+            session_id: MCP session ID (None for initialize request)
+
+        Returns:
+            httpx.Response object
+
+        Raises:
+            MCPError: On HTTP errors (with token redacted)
+        """
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+        }
+
+        if session_id:
+            headers["Mcp-Session-Id"] = session_id
+
+        try:
+            response = httpx.post(
+                self.endpoint,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            return response
+        except httpx.HTTPError as e:
+            # Redact token from error message
+            error_msg = str(e)
+            if self.token in error_msg:
+                error_msg = error_msg.replace(self.token, "[REDACTED]")
+            raise MCPError(f"HTTP error: {error_msg}")
+
+    def _parse_response_body(self, response: httpx.Response) -> dict:
+        """Parse response body, handling both JSON and SSE formats.
+
+        Args:
+            response: httpx.Response object
+
+        Returns:
+            Parsed JSON-RPC response dict
+
+        Raises:
+            MCPError: If parsing fails
+        """
+        content_type = response.headers.get("content-type", "")
+        text = response.text
+
+        # Handle SSE format (text/event-stream)
+        if "text/event-stream" in content_type:
+            return self._parse_sse(text)
+
+        # Handle plain JSON
+        try:
+            return response.json()
+        except json.JSONDecodeError as e:
+            raise MCPError(f"Failed to parse JSON response: {e}")
+
+    def _parse_sse(self, sse_text: str) -> dict:
+        """Parse SSE stream to extract first data: line as JSON.
+
+        Args:
+            sse_text: SSE stream text
+
+        Returns:
+            Parsed JSON from first non-empty data: line
+
+        Raises:
+            MCPError: If no valid data line found
+        """
+        for line in sse_text.split("\n"):
+            if line.startswith("data:"):
+                payload = line[5:].strip()  # Remove "data:" prefix
+                if not payload:
+                    continue  # Skip empty data lines (priming events)
+                try:
+                    return json.loads(payload)
+                except json.JSONDecodeError:
+                    continue  # Skip unparseable lines
+
+        raise MCPError("No valid JSON-RPC payload found in SSE stream")
 
     def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict:
         """Execute a tool via MCP protocol.
@@ -64,24 +206,8 @@ class MCPClient:
             },
         }
 
-        headers = {"Authorization": f"Bearer {self.token}"}
-
-        try:
-            response = httpx.post(
-                self.endpoint,
-                json=payload,
-                headers=headers,
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-        except httpx.HTTPError as e:
-            # Redact token from error message (httpx may include request details)
-            error_msg = str(e)
-            if self.token in error_msg:
-                error_msg = error_msg.replace(self.token, "[REDACTED]")
-            raise MCPError(f"HTTP error calling {tool_name}: {error_msg}")
-
-        data = response.json()
+        response = self._post(payload, session_id=self._session_id)
+        data = self._parse_response_body(response)
 
         # Check for JSON-RPC error
         if "error" in data:
