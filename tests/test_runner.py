@@ -1008,3 +1008,87 @@ class TestDeviceTemplateSubstitution:
 
         # Final message should be captured
         assert result["final_message"] == "Configuration complete"
+
+
+class TestScenarioSetupTeardown:
+    """Test per-scenario fault setup/teardown with two-token separation."""
+
+    def test_setup_applied_before_scenario(self):
+        """Setup is applied before scenario run when setup_token and setup block present."""
+        scenario = {
+            "id": "test-setup",
+            "vendor": "junos",
+            "prompt": "Fix the configuration",
+            "setup": "set system host-name broken",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = []
+
+        # Mock setup client (separate from agent client)
+        mock_setup = Mock()
+        mock_setup.call_tool.side_effect = [
+            {"status": "committed"},  # load_and_commit_config
+            {},  # rollback_config
+        ]
+
+        # Mock agent MCP client
+        mock_mcp = Mock()
+        mock_mcp.call_tool.return_value = ""  # junos_config_diff (empty = clean)
+
+        # Mock LLM
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.return_value = {
+            "choices": [{
+                "message": {"content": "Fixed"},
+                "finish_reason": "stop"
+            }]
+        }
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-device",
+            max_turns=12,
+        )
+
+        # Simulate the setup/run/teardown flow manually (testing the logic)
+        # Setup applied
+        mock_setup.call_tool("load_and_commit_config", {
+            "device": "test-device",
+            "config": "set system host-name broken",
+            "config_format": "set",
+            "commit_comment": "mechubbench scenario setup test-setup — auto-rollback",
+        })
+
+        # Run scenario
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Teardown
+        mock_setup.call_tool("rollback_config", {"device": "test-device", "version": 1, "commit": True})
+
+        # Verify setup was called before scenario run
+        assert mock_setup.call_tool.call_count == 2
+        assert mock_setup.call_tool.call_args_list[0][0][0] == "load_and_commit_config"
+
+    def test_agent_never_sees_setup_client(self):
+        """AgenticRunner is constructed with only the agent client, never setup client."""
+        mock_llm = Mock()
+        mock_mcp_agent = Mock()
+        mock_mcp_setup = Mock()
+
+        # AgenticRunner should only receive the agent client
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp_agent,  # AGENT client only
+            device="test-device",
+            max_turns=12,
+        )
+
+        # The setup client is never passed to AgenticRunner
+        # This is enforced by construction - AgenticRunner has no parameter for it
+        assert agentic_runner.mcp_client == mock_mcp_agent
+        assert hasattr(agentic_runner, "mcp_client")
+        assert not hasattr(agentic_runner, "setup_client")

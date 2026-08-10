@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "run_id": "880d54bb-0a82-44da-a8f5-e49dcaeb6ee1",
+  "model": "qwen2.5:14b-instruct",
+  "corpus_git_sha": "c09a55d662e0ddc24836e113ac00206b460e80cb",
+  "started": "2026-08-10T17:41:10.580957+00:00",
+  "finished": "2026-08-10T17:42:33.727354+00:00",
+  "results": [
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-10T17:41:10.589555+00:00",
+      "finished": "2026-08-10T17:42:33.727298+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies from-zone trust to-zone untrust"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "current-fingerprint",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policies from-zone trust to-zone untrust policy default-permit"
+                }
+              },
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policies from-zone trust to-zone untrust policy demo-bad"
+                }
+              },
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "set security policies from-zone trust to-zone untrust policy deny-all match { source-address any; destination-address any; application any; } then { deny; log { session-init; } }"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system host-fingerprint"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policies from-zone trust to-zone untrust policy default-permit"
+                }
+              },
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policies from-zone trust to-zone untrust policy demo-bad"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system host-fingerprint"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "<correct-fingerprint>",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policies from-zone trust to-zone untrust policy default-permit"
+                }
+              },
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policies from-zone trust to-zone untrust policy demo-bad"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-ci"
+  ]
+}

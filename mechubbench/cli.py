@@ -54,13 +54,20 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Check mode
     if args.mode == "agentic":
-        # Get MCP token from args or environment
+        # Get MCP token from args or environment (AGENT token - commitless)
         mcp_token = args.mcp_token or os.environ.get("RUSTJUNOSMCP_TOKEN")
         if not mcp_token:
             logger.error(
                 "Agentic mode requires --mcp-token (or RUSTJUNOSMCP_TOKEN env var)"
             )
             return 1
+
+        # Get optional setup token (OPERATOR-scoped - can commit)
+        setup_token = args.setup_token or os.environ.get("RUSTJUNOSMCP_SETUP_TOKEN")
+        if setup_token:
+            logger.info("Setup token provided - scenario fault setup/teardown enabled")
+        else:
+            logger.info("No setup token - scenarios run against device as-is")
 
         logger.info(f"Running in AGENTIC mode against real devices")
         logger.info(f"MCP endpoint: {args.mcp_endpoint}")
@@ -127,6 +134,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             endpoint=args.endpoint,
             mcp_endpoint=args.mcp_endpoint,
             mcp_token=mcp_token,
+            setup_token=setup_token,
             device=device,
             temperature=args.temperature,
             num_predict=args.num_predict,
@@ -282,7 +290,12 @@ def main() -> None:
     run_parser.add_argument(
         "--mcp-token",
         default=None,
-        help="MCP bearer token (or set RUSTJUNOSMCP_TOKEN env var)",
+        help="MCP bearer token for agent (commitless, or set RUSTJUNOSMCP_TOKEN env var)",
+    )
+    run_parser.add_argument(
+        "--setup-token",
+        default=None,
+        help="Optional operator-scoped MCP token for scenario fault setup/teardown (or set RUSTJUNOSMCP_SETUP_TOKEN env var)",
     )
     run_parser.add_argument(
         "--num-predict",

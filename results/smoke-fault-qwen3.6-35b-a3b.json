@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "run_id": "7adc22ec-9d54-44a4-91b5-7d4dc484c541",
+  "model": "qwen3.6:35b-a3b",
+  "corpus_git_sha": "c09a55d662e0ddc24836e113ac00206b460e80cb",
+  "started": "2026-08-10T17:43:26.309110+00:00",
+  "finished": "2026-08-10T17:46:26.871873+00:00",
+  "results": [
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-10T17:43:26.318188+00:00",
+      "finished": "2026-08-10T17:46:26.871815+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies policy"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policy"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "max_lines": 500
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "max_lines": 1500
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "policies"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policies from-zone trust to-zone untrust policy default-permit\ndelete security policies from-zone trust to-zone untrust policy demo-bad"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "junos_config_diff",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        }
+      ]
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-ci"
+  ]
+}

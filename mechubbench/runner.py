@@ -815,6 +815,7 @@ def run_all_scenarios_agentic(
     mcp_endpoint: str,
     mcp_token: str,
     device: str,
+    setup_token: str | None = None,
     temperature: float = 0.0,
     num_predict: int | None = None,
     keep_alive: str | None = "30m",
@@ -827,8 +828,9 @@ def run_all_scenarios_agentic(
         tools: Tool definitions
         endpoint: LLM endpoint URL (OpenAI-compatible)
         mcp_endpoint: MCP server endpoint URL
-        mcp_token: MCP bearer token
+        mcp_token: MCP bearer token (AGENT token - commitless)
         device: Device name to use for tool calls
+        setup_token: Optional OPERATOR-scoped token for fault setup/teardown
         temperature: Sampling temperature
         num_predict: Max tokens (Ollama-specific)
         keep_alive: Keep-alive duration (Ollama-specific)
@@ -839,13 +841,18 @@ def run_all_scenarios_agentic(
     run_id = str(uuid.uuid4())
     started = datetime.now(timezone.utc).isoformat()
 
-    # Initialize clients
+    # Initialize clients (two-token separation: agent token != setup token)
     llm_client = LLMClient(
         endpoint=endpoint,
         num_predict=num_predict,
         keep_alive=keep_alive,
     )
-    mcp_client = MCPClient(endpoint=mcp_endpoint, token=mcp_token)
+    mcp_client = MCPClient(endpoint=mcp_endpoint, token=mcp_token)  # AGENT token only
+
+    # Optional setup client (OPERATOR token - can commit)
+    setup_client = None
+    if setup_token:
+        setup_client = MCPClient(endpoint=mcp_endpoint, token=setup_token)
 
     # Health probe for Ollama (extract base URL from endpoint)
     if "/v1" in endpoint:
@@ -889,12 +896,82 @@ def run_all_scenarios_agentic(
             except Exception as e:
                 logger.warning(f"Health probe non-timeout failure: {e}")
 
-        # Run scenario
-        result = agentic_runner.run_scenario(scenario, model, tools, temperature)
-        results.append(result)
+        # Apply scenario fault setup if setup client exists and scenario has setup block
+        setup_applied = False
+        if setup_client and scenario.get("setup"):
+            setup_config = scenario["setup"]
+            # Substitute {{device}} in setup block
+            if "{{device}}" in setup_config:
+                setup_config = setup_config.replace("{{device}}", device)
 
-        status = "PASS" if result["pass"] else "FAIL"
-        logger.info(f"  Result: {status} - {result['reason']}")
+            logger.info(f"Applying fault setup for scenario {scenario['id']}")
+            try:
+                setup_client.call_tool(
+                    "load_and_commit_config",
+                    {
+                        "device": device,
+                        "config": setup_config,
+                        "config_format": "set",
+                        "commit_comment": f"mechubbench scenario setup {scenario['id']} — auto-rollback",
+                    }
+                )
+                setup_applied = True
+                logger.info(f"Fault setup committed for {scenario['id']}")
+            except MCPError as e:
+                logger.error(f"Fault setup failed for {scenario['id']}: {e}")
+                result = {
+                    "id": scenario["id"],
+                    "pass": False,
+                    "reason": f"setup_failed: {e}",
+                    "started": datetime.now(timezone.utc).isoformat(),
+                    "finished": datetime.now(timezone.utc).isoformat(),
+                    "transcript": [],
+                    "final_message": None,
+                }
+                results.append(result)
+                continue
+
+        try:
+            # Run scenario
+            result = agentic_runner.run_scenario(scenario, model, tools, temperature)
+            results.append(result)
+
+            status = "PASS" if result["pass"] else "FAIL"
+            logger.info(f"  Result: {status} - {result['reason']}")
+
+        finally:
+            # ALWAYS roll back setup if it was applied
+            if setup_applied:
+                logger.info(f"Rolling back fault setup for {scenario['id']}")
+                try:
+                    # Rollback to version 1 (before setup)
+                    setup_client.call_tool(
+                        "rollback_config",
+                        {"device": device, "version": 1, "commit": True}
+                    )
+
+                    # Verify clean rollback (empty candidate diff)
+                    diff_result = mcp_client.call_tool("junos_config_diff", {"device": device})
+                    if isinstance(diff_result, dict):
+                        diff_text = diff_result.get("diff", "")
+                    else:
+                        diff_text = str(diff_result)
+
+                    if diff_text.strip():
+                        logger.error(
+                            f"ABORT: Rollback verification failed - candidate diff not empty after rollback. "
+                            f"Device {device} may be in dirty state. Aborting sweep."
+                        )
+                        raise RuntimeError(f"Rollback verification failed for {scenario['id']}: dirty candidate")
+
+                    logger.info(f"Fault setup rolled back cleanly for {scenario['id']}")
+
+                except Exception as e:
+                    logger.error(
+                        f"ABORT: Rollback failed for {scenario['id']}: {e}. "
+                        f"Device {device} is in dirty state. Aborting sweep."
+                    )
+                    raise RuntimeError(f"Rollback failure - aborting sweep to prevent cascading faults: {e}")
 
     finished = datetime.now(timezone.utc).isoformat()
 
