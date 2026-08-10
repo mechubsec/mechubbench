@@ -843,23 +843,37 @@ class LLMClient:
 def convert_tools_to_openai_format(tools: list[dict]) -> list[dict]:
     """Convert tool definitions to OpenAI chat completions format.
 
+    Accepts MCP-native (inputSchema/input_schema) or OpenAI-native (parameters) formats.
+
     Args:
-        tools: List of {name, description, parameters} dicts
+        tools: List of {name, description, parameters|inputSchema|input_schema} dicts
 
     Returns:
         List of OpenAI tool defs with type: "function"
+
+    Raises:
+        ValueError: If a tool lacks all three schema keys
     """
-    return [
-        {
+    converted = []
+    for t in tools:
+        # Try parameters, inputSchema, input_schema in precedence order
+        schema = t.get("parameters") or t.get("inputSchema") or t.get("input_schema")
+        if schema is None:
+            raise ValueError(
+                f"Tool '{t.get('name', 'unknown')}' missing schema: "
+                "expected 'parameters', 'inputSchema', or 'input_schema'"
+            )
+
+        converted.append({
             "type": "function",
             "function": {
                 "name": t["name"],
                 "description": t["description"],
-                "parameters": t["parameters"],
+                "parameters": schema,
             },
-        }
-        for t in tools
-    ]
+        })
+
+    return converted
 
 
 def extract_tool_calls(response: dict) -> list[dict]:

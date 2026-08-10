@@ -52,6 +52,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     tools = core.load_tools(tools_path)
     logger.info(f"Loaded {len(tools)} tool(s)")
 
+    # Validate tools have schema (parameters, inputSchema, or input_schema)
+    for tool in tools:
+        schema = tool.get("parameters") or tool.get("inputSchema") or tool.get("input_schema")
+        if schema is None:
+            logger.error(
+                f"Tool '{tool.get('name', 'unknown')}' missing schema: "
+                "expected 'parameters', 'inputSchema', or 'input_schema'. "
+                "Run 'bench export-tools' to get live schemas from MCP server."
+            )
+            return 1
+
     # Check mode
     if args.mode == "agentic":
         # Get MCP token from args or environment (AGENT token - commitless)
