@@ -1077,6 +1077,27 @@ def run_all_scenarios(
     )
 
 
+def prepare_setup_config(setup: str, device: str) -> str:
+    """Prepare a scenario setup block for load_and_commit_config.
+
+    Substitutes {{device}} and strips comment/blank lines: Junos set-format
+    load rejects '#' comments, which scenario authors use for documentation.
+
+    Args:
+        setup: Raw setup block from the scenario YAML
+        device: Device name to substitute for {{device}}
+
+    Returns:
+        Config text safe to send as set-format payload
+    """
+    if "{{device}}" in setup:
+        setup = setup.replace("{{device}}", device)
+    return "\n".join(
+        line for line in setup.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    )
+
+
 def run_all_scenarios_agentic(
     scenarios: list[dict],
     model: str,
@@ -1170,10 +1191,7 @@ def run_all_scenarios_agentic(
         # Apply scenario fault setup if setup client exists and scenario has setup block
         setup_applied = False
         if setup_client and scenario.get("setup"):
-            setup_config = scenario["setup"]
-            # Substitute {{device}} in setup block
-            if "{{device}}" in setup_config:
-                setup_config = setup_config.replace("{{device}}", device)
+            setup_config = prepare_setup_config(scenario["setup"], device)
 
             logger.info(f"Applying fault setup for scenario {scenario['id']}")
             try:

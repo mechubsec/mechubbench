@@ -2,11 +2,11 @@ id: junos-rollback-after-failure
 vendor: junos
 domain: system
 setup: |
-  # Device has a recent config change that needs rollback
+  # Device has a recent config change that needs rollback.
+  # The setup harness commits this via load_and_commit_config — no bare
+  # `commit` line here; set-format payloads accept only set/delete commands.
   set system host-name broken-config
   set system services ssh
-  commit
-  # Previous config had different hostname
 prompt: >
   A recent configuration change on {{device}} caused an issue. Roll back to
   the previous configuration (rollback 0). Show the diff that will be applied

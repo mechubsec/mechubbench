@@ -1797,3 +1797,23 @@ class TestTeardownImprovements:
         second_call = mock_mcp.call_tool.call_args_list[1]
         assert second_call[0][0] == "discard_panos_candidate"
         assert second_call[0][1] == {"device": "test-pa"}
+
+
+class TestPrepareSetupConfig:
+    """prepare_setup_config strips comments/blanks and substitutes the device."""
+
+    def test_strips_comment_and_blank_lines(self):
+        from mechubbench.runner import prepare_setup_config
+        setup = "# Device has NTP configured\nset system ntp server 1.2.3.4\n\nset system ntp server 5.6.7.8\n"
+        result = prepare_setup_config(setup, "vsrx-ci")
+        assert result == "set system ntp server 1.2.3.4\nset system ntp server 5.6.7.8"
+
+    def test_substitutes_device_placeholder(self):
+        from mechubbench.runner import prepare_setup_config
+        setup = "set groups bench when peers {{device}}\n"
+        assert prepare_setup_config(setup, "vsrx-ci") == "set groups bench when peers vsrx-ci"
+
+    def test_indented_comment_is_stripped(self):
+        from mechubbench.runner import prepare_setup_config
+        setup = "set system ntp server 1.2.3.4\n  # trailing note\n"
+        assert prepare_setup_config(setup, "d") == "set system ntp server 1.2.3.4"
