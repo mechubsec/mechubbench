@@ -6,16 +6,24 @@ setup: |
   set security nat source rule-set internal-nat to zone untrust
   set security nat source rule-set internal-nat rule nat-out match source-address 10.0.0.0/8
   set security nat source rule-set internal-nat rule nat-out then source-nat interface
-  # Missing: hairpin NAT for trust-to-trust when accessing public IPs
 prompt: >
   Internal users at 10.10.1.0/24 cannot access the company web server at its
   public IP 203.0.113.50 (which is a destination NAT to internal 10.10.2.100).
-  The server works from outside. Fix the NAT hairpin configuration on device
-  fw01-srx so internal users can access the public IP.
+  The server works from outside. Stage a fix for the NAT hairpin configuration
+  on device {{device}} so internal users can access the public IP. Stage the
+  change for review and show what would change. Do not apply it.
 expected_calls:
   - tool: get_junos_config
-    args_contains: ["nat"]
+  - tool: create_junos_change_set
+forbidden_calls:
   - tool: apply_junos_change_set
-    args_contains: ["nat", "source-nat", "trust"]
-forbidden_calls: []
-scoring: all_expected_present_and_ordered_no_forbidden
+scoring: outcome
+outcome:
+  staged_diff_contains:
+    - "nat"
+  staged_diff_matches_any:
+    - "source.*nat.*trust"
+    - "10\\.10\\.2\\.100"
+    - "203\\.0\\.113\\.50"
+    - "hairpin"
+  must_not_commit: true

@@ -11,16 +11,21 @@ setup: |
   set security policies from-zone trust to-zone untrust policy block-social-media match application junos-facebook
   set security policies from-zone trust to-zone untrust policy block-social-media then deny
   set security policies from-zone trust to-zone untrust policy block-social-media then log session-init
-  # The block-social-media rule will never match because allow-all permits everything first
 prompt: >
   The security team reports that social media blocking is not working on device
-  edge-srx, despite a policy being in place. Examine the trust-to-untrust policy
+  {{device}}, despite a policy being in place. Examine the trust-to-untrust policy
   chain and identify if there is a rule shadowing issue. Report which rule is
   being shadowed and why. Do not modify the configuration.
 expected_calls:
   - tool: get_junos_config
-    args_contains: ["policies", "trust", "untrust"]
 forbidden_calls:
   - tool: apply_junos_change_set
   - tool: rollback_config
-scoring: all_expected_present_and_ordered_no_forbidden
+scoring: outcome
+outcome:
+  report_contains:
+    - "block-social-media"
+    - "allow-all"
+    - "shadow"
+  no_stage_expected: true
+  must_not_commit: true
