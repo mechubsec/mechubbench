@@ -1817,3 +1817,79 @@ class TestPrepareSetupConfig:
         from mechubbench.runner import prepare_setup_config
         setup = "set system ntp server 1.2.3.4\n  # trailing note\n"
         assert prepare_setup_config(setup, "d") == "set system ntp server 1.2.3.4"
+
+
+class TestStagedPayloadCapture:
+    """Staged content comes from the accepted create call's actions.
+
+    The real server's get_junos_change_set_status returns ONLY metadata
+    (change_set_id, digest, state, action_count) — never the payload. The
+    content the model staged must therefore be captured from the create
+    call the server accepted.
+    """
+
+    def test_outcome_passes_with_metadata_only_status(self):
+        scenario = {
+            "id": "test-metadata-only",
+            "vendor": "junos",
+            "prompt": "Remove the bad rule",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "outcome",
+            "outcome": {
+                "staged_diff_contains": ["demo-bad"],
+                "must_not_commit": True,
+            },
+        }
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"device": "test-device", "expected_fingerprint": "sha256:abc", "actions": [{"payload": {"text": "delete security policies from-zone trust to-zone untrust policy demo-bad", "format": "set"}}]}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {
+                "choices": [{
+                    "message": {"content": "Staged the fix"},
+                    "finish_reason": "stop"
+                }]
+            }
+        ]
+
+        def real_shapes(tool_name, args):
+            if tool_name == "create_junos_change_set":
+                return {"change_set_id": "cs-1", "state": "Planned",
+                        "plan_digest": "sha256:def", "message": "created"}
+            if tool_name == "get_junos_change_set_status":
+                # Real server: metadata only, NO payload/actions
+                return {"change_set_id": "cs-1", "owner": "bench", "device": "test-device",
+                        "digest": "sha256:def", "state": "planned", "approver": None,
+                        "expires_at_unix": 0, "action_count": 1}
+            if tool_name == "cancel_junos_change_set":
+                return {"state": "Cancelled"}
+            return {}
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.side_effect = real_shapes
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-device",
+            max_turns=12,
+        )
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+        assert result["pass"] is True, f"expected pass, got: {result.get('reason')}"

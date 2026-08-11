@@ -443,6 +443,7 @@ class AgenticRunner:
         started = datetime.now(timezone.utc).isoformat()
         transcript = []
         change_set_ids = []  # Track created change-sets for teardown
+        staged_payloads = []  # Staged content from accepted create calls (for outcome capture)
         vendor = scenario.get("vendor", "unknown")
         final_message = None  # Track model's final text response
 
@@ -545,6 +546,20 @@ class AgenticRunner:
                             if cs_id:
                                 change_set_ids.append(cs_id)
                                 logger.debug(f"Tracked change-set {cs_id} for teardown")
+                                # Capture the staged content from the accepted create
+                                # call: the server's status view exposes only metadata
+                                # (digest + action_count), so the payload the server
+                                # accepted and digested is the staged content of record.
+                                for action in tool_args.get("actions", []) or []:
+                                    if isinstance(action, dict):
+                                        payload = action.get("payload") or {}
+                                        text = payload.get("text") if isinstance(payload, dict) else None
+                                        if text:
+                                            staged_payloads.append(text)
+                                        elif action.get("rollback_source") is not None:
+                                            staged_payloads.append(
+                                                f"rollback {action['rollback_source']}"
+                                            )
 
                     # Add tool_error to transcript if present
                     if tool_error:
@@ -622,7 +637,7 @@ class AgenticRunner:
                                     except json.JSONDecodeError:
                                         pass  # Keep as string
 
-                                # Serialize the full change-set structure (includes payload/actions)
+                                # Serialize the change-set status (metadata: digest, state, action_count)
                                 if isinstance(status_result, dict):
                                     status_text = json.dumps(status_result, indent=2)
                                 else:
@@ -634,8 +649,11 @@ class AgenticRunner:
                                 # Continue capturing other change-sets
                                 continue
 
-                        # Concatenate all captured statuses
-                        staged_diff = "\n\n".join(captured_statuses) if captured_statuses else None
+                        # Concatenate captured statuses plus the staged payloads
+                        # from the accepted create calls — the status view carries
+                        # only metadata, so the payloads carry the content asserts.
+                        captured = captured_statuses + staged_payloads
+                        staged_diff = "\n\n".join(captured) if captured else None
 
                     elif vendor == "panos":
                         # PAN-OS: change-sets DO stage to device candidate
