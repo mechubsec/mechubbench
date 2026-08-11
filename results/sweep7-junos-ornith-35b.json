@@ -1,0 +1,510 @@
+{
+  "schema_version": 1,
+  "run_id": "42309921-fc3f-4797-98ad-a04de5235696",
+  "model": "ornith:35b",
+  "corpus_git_sha": "c568636d558e65b27257d80bbc63fd07a9c4edb3",
+  "started": "2026-08-10T23:57:05.202615+00:00",
+  "finished": "2026-08-11T00:05:02.217642+00:00",
+  "results": [
+    {
+      "id": "discover-junos-ntp-status",
+      "pass": true,
+      "reason": "report contains all required keywords",
+      "started": "2026-08-10T23:57:05.224502+00:00",
+      "finished": "2026-08-10T23:58:04.659268+00:00",
+      "transcript": [
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show ntp status"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fail-junos-any-any-permit",
+      "pass": false,
+      "reason": "report missing keywords: ['permissive']",
+      "started": "2026-08-10T23:58:06.993921+00:00",
+      "finished": "2026-08-10T23:58:59.960021+00:00",
+      "transcript": [
+        {
+          "tool": "gather_device_facts",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "junos_config_diff",
+          "args": {
+            "device": "vsrx-ci",
+            "version": 0
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies"
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show configuration security policies | display set"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security",
+            "max_lines": 200
+          }
+        }
+      ]
+    },
+    {
+      "id": "fleet-sync-exclusion-interfaces",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-10T23:59:02.024417+00:00",
+      "finished": "2026-08-11T00:00:17.133047+00:00",
+      "transcript": [
+        {
+          "tool": "get_router_list",
+          "args": {}
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-br01",
+            "config_path": "system"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system"
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-br02"
+          }
+        },
+        {
+          "tool": "gather_device_facts",
+          "args": {
+            "device": "vsrx-br01",
+            "timeout": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "fleet-sync-zone-prune",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:00:19.368073+00:00",
+      "finished": "2026-08-11T00:00:28.245056+00:00",
+      "transcript": [
+        {
+          "tool": "get_router_list",
+          "args": {}
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-add-dns",
+      "pass": false,
+      "reason": "incomplete: hit 12-turn limit, outcome: no staged diff captured",
+      "started": "2026-08-11T00:00:30.014029+00:00",
+      "finished": "2026-08-11T00:01:11.436953+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system services"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "system {\n    name-service {\n        dns {\n            recursive;\n            server 1.1.1.2;\n            server 1.0.0.2;\n        }\n    }\n}",
+            "config_format": "text"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_format": "set",
+            "config_text": "set system name-service dns recursive\nset system name-service dns server 1.1.1.2\nset system name-service dns server 1.0.0.2"
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system name-service"
+          }
+        },
+        {
+          "tool": "discard_candidate",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_format": "set",
+            "config_text": "set system name-service dns recursive\nset system name-service dns server 1.1.1.2\nset system name-service dns server 1.0.0.2"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_format": "text",
+            "config_text": "system {\n    name-service {\n        dns {\n            recursive;\n            server 1.1.1.2;\n            server 1.0.0.2;\n        }\n    }\n}"
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show system name-service dns 2>&1"
+          }
+        },
+        {
+          "tool": "gather_device_facts",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show configuration system name-service dns 2>&1"
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show version 2>&1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-add-ntp",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:01:13.600085+00:00",
+      "finished": "2026-08-11T00:01:51.371444+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system ntp"
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "sha256:7ead2199d9b98440c3509f7198992da8beffab00d528d3cabc7ba021df1db5bd",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "set system ntp server 132.163.97.1\nset system ntp server 128.138.140.44"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "get_junos_change_set_status",
+          "args": {
+            "change_set_id": "2819e7bcf85d82166bfa5780ea4556af30450cd15497a172fc8bd729b60fcf8b",
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "junos_config_diff",
+          "args": {
+            "device": "vsrx-ci",
+            "version": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:01:53.495143+00:00",
+      "finished": "2026-08-11T00:02:23.723883+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies"
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "sha256:c5510adb0c1cfeddf0f6b46a83db7e543c08d401d0df6ed9ce0f1a45f4a9a0a1",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policies from-zone trust to-zone untrust policy demo-bad"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "get_junos_change_set_status",
+          "args": {
+            "change_set_id": "2819e7bcf85d82166bfa5780ea4556af30450cd15497a172fc8bd729b60fcf8b",
+            "device": "vsrx-ci"
+          }
+        }
+      ]
+    },
+    {
+      "id": "junos-rollback-after-failure",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:02:25.572140+00:00",
+      "finished": "2026-08-11T00:02:51.045651+00:00",
+      "transcript": [
+        {
+          "tool": "rollback_config",
+          "args": {
+            "device": "vsrx-ci",
+            "version": 0,
+            "commit": false
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-junos-dns-baseline",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:02:53.203244+00:00",
+      "finished": "2026-08-11T00:03:43.100015+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system name-service dns"
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show system name-service dns"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "system.name-server.1.1.1.2,1.0.0.2;no.search-domain",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete system name-server\nset system name-server 1.1.1.2\nset system name-server 1.0.0.2\nset system search-domain mechub.org"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "sha256:c5510adb0c1cfeddf0f6b46a83db7e543c08d401d0df6ed9ce0f1a45f4a9a0a1",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete system name-server\nset system name-server 1.1.1.2\nset system name-server 1.0.0.2\nset system search-domain mechub.org"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "get_junos_change_set_status",
+          "args": {
+            "change_set_id": "2819e7bcf85d82166bfa5780ea4556af30450cd15497a172fc8bd729b60fcf8b",
+            "device": "vsrx-ci"
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-junos-ntp-baseline",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:03:45.273186+00:00",
+      "finished": "2026-08-11T00:04:13.645878+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system ntp"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "system {\n    ntp {\n        server 132.163.97.1;\n        server 128.138.140.44;\n    }\n}",
+            "config_format": "set"
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "configure"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "system {\n    ntp {\n        server 132.163.97.1;\n        server 128.138.140.44;\n    }\n}",
+            "config_format": "text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-duplicate-objects",
+      "pass": false,
+      "reason": "report missing keywords: ['10.10.10.5', 'server-a', 'server-b']",
+      "started": "2026-08-11T00:04:15.846570+00:00",
+      "finished": "2026-08-11T00:04:31.187676+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security address-book addresses"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security address-book"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-shadowed-rules",
+      "pass": false,
+      "reason": "report missing keywords: ['allow-http', 'allow-all']",
+      "started": "2026-08-11T00:04:33.347730+00:00",
+      "finished": "2026-08-11T00:05:00.556900+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies from-zone trust to-zone untrust policy"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies"
+          }
+        }
+      ]
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-ci"
+  ]
+}

@@ -507,16 +507,37 @@ class AgenticRunner:
                         # Execute via MCP
                         try:
                             tool_result = self.mcp_client.call_tool(tool_name, tool_args)
-
-                            # Track change-set IDs for teardown (only on SUCCESS)
-                            if tool_name in ("create_junos_change_set", "create_panos_change_set"):
-                                if isinstance(tool_result, dict) and "change_set_id" in tool_result:
-                                    change_set_ids.append(tool_result["change_set_id"])
                         except MCPError as e:
                             logger.error(f"MCP error executing {tool_name}: {e}")
                             tool_result = {"error": str(e)}
                             # Surface server rejections distinctly (e.g., deserialization/validation errors)
                             tool_error = str(e)
+
+                    # Normalize tool_result: parse if string, keep both forms
+                    # (Some MCP servers return JSON as string, some as already-parsed dict)
+                    parsed_result = tool_result
+                    if isinstance(tool_result, str):
+                        try:
+                            parsed_result = json.loads(tool_result)
+                        except json.JSONDecodeError:
+                            # Not JSON - keep as string
+                            parsed_result = {"text": tool_result}
+
+                    # Track change-set IDs for teardown (only on SUCCESS, using parsed_result)
+                    if tool_name in ("create_junos_change_set", "create_panos_change_set"):
+                        # Check top-level or one level nested
+                        cs_id = None
+                        if isinstance(parsed_result, dict):
+                            cs_id = parsed_result.get("change_set_id")
+                            # Check one level nested (some responses wrap in "result")
+                            if not cs_id and "result" in parsed_result:
+                                result_obj = parsed_result["result"]
+                                if isinstance(result_obj, dict):
+                                    cs_id = result_obj.get("change_set_id")
+
+                            if cs_id:
+                                change_set_ids.append(cs_id)
+                                logger.debug(f"Tracked change-set {cs_id} for teardown")
 
                     # Add tool_error to transcript if present
                     if tool_error:
@@ -524,10 +545,16 @@ class AgenticRunner:
 
                     transcript.append(transcript_entry)
 
-                    # Append tool result to conversation
+                    # Append tool result to conversation (serialize for model)
+                    # Use original tool_result if it's already a string, otherwise serialize
+                    if isinstance(tool_result, str):
+                        result_content = tool_result
+                    else:
+                        result_content = json.dumps(tool_result)
+
                     tool_message = {
                         "role": "tool",
-                        "content": json.dumps(tool_result),
+                        "content": result_content,
                         "tool_call_id": f"call_{len(transcript)}",
                     }
                     messages.append(tool_message)
@@ -581,6 +608,13 @@ class AgenticRunner:
                                     "get_junos_change_set_status",
                                     {"change_set_id": cs_id, "device": self.device}
                                 )
+                                # Normalize: parse if string
+                                if isinstance(status_result, str):
+                                    try:
+                                        status_result = json.loads(status_result)
+                                    except json.JSONDecodeError:
+                                        pass  # Keep as string
+
                                 # Serialize the full change-set structure (includes payload/actions)
                                 if isinstance(status_result, dict):
                                     status_text = json.dumps(status_result, indent=2)
@@ -602,6 +636,13 @@ class AgenticRunner:
                             "diff_panos_candidate",
                             {"device": self.device}
                         )
+                        # Normalize: parse if string
+                        if isinstance(diff_result, str):
+                            try:
+                                diff_result = json.loads(diff_result)
+                            except json.JSONDecodeError:
+                                pass  # Keep as string
+
                         if isinstance(diff_result, dict):
                             staged_diff = diff_result.get("diff", "")
                         else:

@@ -1048,6 +1048,84 @@ class TestAgenticRunner:
         # Should NOT have called discard (no change-set to discard)
         assert mock_mcp.call_tool.call_count == 1  # Only the failed create
 
+    def test_json_string_result_tracked(self):
+        """Transport returns create response as JSON STRING → id tracked, teardown runs."""
+        scenario = {
+            "id": "test-json-str",
+            "vendor": "junos",
+            "prompt": "Create change",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "outcome",
+            "outcome": {
+                "staged_diff_contains": ["test-config"],
+            },
+        }
+
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"device": "test", "config": "set test-config"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            }
+        ]
+
+        call_count = {"create": 0, "get_status": 0, "discard": 0}
+
+        def mock_calls(tool_name, args):
+            if tool_name == "create_junos_change_set":
+                call_count["create"] += 1
+                # Return JSON as STRING (not dict) - this is the bug case
+                return '{"change_set_id": "cs-abc123", "status": "staged"}'
+            elif tool_name == "get_junos_change_set_status":
+                call_count["get_status"] += 1
+                # Also return as JSON string
+                return '{"change_set_id": "cs-abc123", "payload": "set test-config"}'
+            elif tool_name == "discard_candidate":
+                call_count["discard"] += 1
+                return {"success": True}
+            return {}
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.side_effect = mock_calls
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-device",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should have tracked the change-set ID (from JSON string)
+        assert call_count["create"] == 1
+        assert call_count["get_status"] == 1  # Capture should have run
+        assert call_count["discard"] == 1  # Teardown should have run
+
+        # Should pass (evidence captured)
+        assert result["pass"] is True
+
 
 class TestDeviceTemplateSubstitution:
     """Test {{device}} template substitution in scenarios."""
