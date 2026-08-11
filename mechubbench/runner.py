@@ -1181,7 +1181,7 @@ def run_all_scenarios_agentic(
                     "load_and_commit_config",
                     {
                         "device": device,
-                        "config": setup_config,
+                        "config_text": setup_config,
                         "config_format": "set",
                         "commit_comment": f"mechubbench scenario setup {scenario['id']} — auto-rollback",
                     }

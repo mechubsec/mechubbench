@@ -1251,7 +1251,7 @@ class TestScenarioSetupTeardown:
         # Setup applied
         mock_setup.call_tool("load_and_commit_config", {
             "device": "test-device",
-            "config": "set system host-name broken",
+            "config_text": "set system host-name broken",
             "config_format": "set",
             "commit_comment": "mechubbench scenario setup test-setup — auto-rollback",
         })
