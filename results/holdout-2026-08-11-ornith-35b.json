@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "run_id": "4515aeb1-18bc-4e76-87e8-af6554927573",
+  "model": "ornith:35b",
+  "corpus_git_sha": "817925cb97f8748e42a9943ef18c2f5ee49d9952",
+  "started": "2026-08-11T18:45:47.472046+00:00",
+  "finished": "2026-08-11T18:53:33.842868+00:00",
+  "results": [
+    {
+      "id": "fail-junos-duplicate-rule-shadowing",
+      "pass": false,
+      "reason": "report missing keywords: ['block-social-media', 'allow-all']",
+      "started": "2026-08-11T18:45:47.968093+00:00",
+      "finished": "2026-08-11T18:50:14.243146+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies from-zone"
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <flag-value> or <attribute-value>"
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security"
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show security policies policy-statistics | display xml",
+            "max_lines": 100
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show security policies",
+            "max_lines": 80
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show security zones",
+            "max_lines": 40
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show security address-book address | display xml",
+            "max_lines": 50
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show security address-book address",
+            "max_lines": 30
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security address-book"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-nat-hairpin-misconfig",
+      "pass": false,
+      "reason": "incomplete: hit 12-turn limit, outcome: no staged diff captured",
+      "started": "2026-08-11T18:50:17.772226+00:00",
+      "finished": "2026-08-11T18:53:12.413731+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security nat destination"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security nat source"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "routing instances"
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security nat"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security zones security-zone"
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <identifier>"
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security zones"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "interfaces ge-0/0/0"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security",
+            "max_lines": 200
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security nat",
+            "max_lines": 300
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show security nat destination | display set"
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "interfaces",
+            "max_lines": 100
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show security zones",
+            "max_lines": 50
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies",
+            "max_lines": 100
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show security nat destination static | display set 2>&1 | head -50"
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies from-zone trust to-zone untrust policy allow-http"
+          }
+        },
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show security nat destination",
+            "max_lines": 50
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "sha256:af2cc44176e79eba09d749ce4eaed87472013a6879b5fb2b78ce6be3c918ce52",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "set security nat source rule-set trust-to-trust-hairpin from zone trust\nset security nat source rule-set trust-to-trust-hairpin to zone untrust\nset security nat source rule-set trust-to-trust-hairpin rule hairpin-nat match destination-address 203.0.113.50/32\nset security nat source rule-set trust-to-trust-hairpin rule hairpin-nat then source-nat static prefix 10.10.2.0/24"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "get_junos_change_set_status",
+          "args": {
+            "change_set_id": "26031ffccf0d96ada9e9245b3e7ce8dce8a7645cd96d27b16b12c83242e5168c",
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security nat source"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-orphaned-address-object",
+      "pass": true,
+      "reason": "all_expected_present_and_ordered",
+      "started": "2026-08-11T18:53:15.288779+00:00",
+      "finished": "2026-08-11T18:53:31.898048+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "corp-srx",
+            "config_path": "security address-book addresses"
+          },
+          "tool_error": "Tool execution failed: token 'mechubbench' is not authorized for router 'corp-srx' (tool 'get_junos_config')"
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "corp-srx",
+            "config_path": "security policies"
+          },
+          "tool_error": "Tool execution failed: token 'mechubbench' is not authorized for router 'corp-srx' (tool 'get_junos_config')"
+        },
+        {
+          "tool": "get_device_list",
+          "args": {},
+          "tool_error": "HTTP error: Client error '403 Forbidden' for url 'http://198.51.100.194:30031/mcp'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403"
+        },
+        {
+          "tool": "get_router_list",
+          "args": {}
+        }
+      ]
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-ci"
+  ]
+}

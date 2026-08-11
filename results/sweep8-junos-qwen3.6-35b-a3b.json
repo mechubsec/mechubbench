@@ -1,0 +1,388 @@
+{
+  "schema_version": 1,
+  "run_id": "4ea1ba78-ff1e-41cb-b172-fa028d44dd9e",
+  "model": "qwen3.6:35b-a3b",
+  "corpus_git_sha": "4bedccb9f58648ef076e13c81ca15f6fe891b5d8",
+  "started": "2026-08-11T00:22:47.551301+00:00",
+  "finished": "2026-08-11T00:34:21.249703+00:00",
+  "results": [
+    {
+      "id": "discover-junos-ntp-status",
+      "pass": true,
+      "reason": "report contains all required keywords",
+      "started": "2026-08-11T00:22:47.573217+00:00",
+      "finished": "2026-08-11T00:24:45.075686+00:00",
+      "transcript": [
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show ntp status"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fail-junos-any-any-permit",
+      "pass": true,
+      "reason": "report contains all required keywords",
+      "started": "2026-08-11T00:24:47.192556+00:00",
+      "finished": "2026-08-11T00:25:53.122416+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies"
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fleet-sync-exclusion-interfaces",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:25:55.376343+00:00",
+      "finished": "2026-08-11T00:26:49.179564+00:00",
+      "transcript": []
+    },
+    {
+      "id": "fleet-sync-zone-prune",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:26:51.433784+00:00",
+      "finished": "2026-08-11T00:28:32.434525+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "source",
+            "config_path": "security zones security-zone trust"
+          }
+        },
+        {
+          "tool": "get_router_list",
+          "args": {}
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-br01",
+            "config_path": "security zones security-zone trust"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-br02",
+            "config_path": "security zones security-zone trust"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security zones security-zone trust"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-add-dns",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:28:34.653363+00:00",
+      "finished": "2026-08-11T00:28:57.128662+00:00",
+      "transcript": [
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "set system services dns server 1.1.1.2\nset system services dns server 1.0.0.2",
+            "config_format": "set"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "config_format": "set",
+            "config_text": "set system name-server 1.1.1.2\nset system name-server 1.0.0.2",
+            "device": "vsrx-ci"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-add-ntp",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:28:59.029722+00:00",
+      "finished": "2026-08-11T00:29:09.635285+00:00",
+      "transcript": [
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "set system ntp server 132.163.97.1\nset system ntp server 128.138.140.44",
+            "config_format": "set"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": false,
+      "reason": "incomplete: hit 12-turn limit, outcome: no staged diff captured",
+      "started": "2026-08-11T00:29:11.842725+00:00",
+      "finished": "2026-08-11T00:30:53.129478+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policy"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security"
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "sha256:c5510adb0c1cfeddf0f6b46a83db7e543c08d401d0df6ed9ce0f1a45f4a9a0a1",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policy from-zone trust to-zone untrust policy demo-bad\nset security policy from-zone trust to-zone untrust policy default-permit match application juniper-global-ssl http https dns"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "delete security policy from-zone trust to-zone untrust policy demo-bad\nset security policy from-zone trust to-zone untrust policy default-permit match application juniper-global-ssl http https dns",
+            "config_format": "set"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "delete security policy from-zone trust to-zone untrust policy demo-bad",
+            "config_format": "set"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policy from-zone trust to-zone untrust"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policy-policy"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "policies"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "delete security policy-policy from-zone trust to-zone untrust policy demo-bad\nset security policy-policy from-zone trust to-zone untrust policy default-permit match application juniper-global-ssl http https dns",
+            "config_format": "set"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "delete security policy from-zone trust to-zone untrust policy \"demo-bad\"",
+            "config_format": "set"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "delete security policy-policy from-zone trust to-zone untrust policy demo-bad\ndelete security policy-policy from-zone trust to-zone untrust policy default-permit match application any\nset security policy-policy from-zone trust to-zone untrust policy default-permit match application http\nset security policy-policy from-zone trust to-zone untrust policy default-permit match application https\nset security policy-policy from-zone trust to-zone untrust policy default-permit match application dns\nset security policy-policy from-zone trust to-zone untrust policy default-permit match application juniper-global-ssl",
+            "config_format": "set"
+          }
+        }
+      ]
+    },
+    {
+      "id": "junos-rollback-after-failure",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:30:55.359162+00:00",
+      "finished": "2026-08-11T00:31:22.731838+00:00",
+      "transcript": [
+        {
+          "tool": "rollback_config",
+          "args": {
+            "device": "vsrx-ci",
+            "version": 0,
+            "commit": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-junos-dns-baseline",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:31:25.018400+00:00",
+      "finished": "2026-08-11T00:32:49.957338+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "sha256:c5510adb0c1cfeddf0f6b46a83db7e543c08d401d0df6ed9ce0f1a45f4a9a0a1",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "set system name-server 1.1.1.2\nset system name-server 1.0.0.2\nset system search-domain mechub.org"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "config_format": "set",
+            "config_text": "set system name-server 1.1.1.2\nset system name-server 1.0.0.2\nset system search-domain mechub.org",
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "config_format": "set",
+            "config_text": "set system name-server 1.1.1.2\nset system name-server 1.0.0.2\nset system domain-name mechub.org",
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "config_path": "system",
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "get_junos_change_set_status",
+          "args": {
+            "change_set_id": "2819e7bcf85d82166bfa5780ea4556af30450cd15497a172fc8bd729b60fcf8b",
+            "device": "vsrx-ci"
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-junos-ntp-baseline",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T00:32:52.203030+00:00",
+      "finished": "2026-08-11T00:33:12.438339+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system ntp"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "delete system ntp server 129.6.15.28\ndelete system ntp server 129.6.15.29\ndelete system ntp server 129.6.15.30\nset system ntp server 132.163.97.1\nset system ntp server 128.138.140.44",
+            "config_format": "set"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-duplicate-objects",
+      "pass": false,
+      "reason": "report missing keywords: ['10.10.10.5', 'server-a', 'server-b']",
+      "started": "2026-08-11T00:33:14.643401+00:00",
+      "finished": "2026-08-11T00:33:39.867026+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security address-book"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-shadowed-rules",
+      "pass": false,
+      "reason": "report missing keywords: ['allow-http', 'allow-all']",
+      "started": "2026-08-11T00:33:41.794291+00:00",
+      "finished": "2026-08-11T00:34:19.393205+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies from-zone trust to-zone untrust"
+          }
+        }
+      ]
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-ci"
+  ]
+}

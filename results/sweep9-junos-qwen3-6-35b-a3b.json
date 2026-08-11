@@ -1,0 +1,312 @@
+{
+  "schema_version": 1,
+  "run_id": "0128baa5-f1d4-4283-a348-4d3b4c5aac8c",
+  "model": "qwen3.6:35b-a3b",
+  "corpus_git_sha": "8b02e5438e4e6285bd6282be9efcc4d7eb509c35",
+  "started": "2026-08-11T18:21:28.946405+00:00",
+  "finished": "2026-08-11T18:31:29.523475+00:00",
+  "results": [
+    {
+      "id": "discover-junos-ntp-status",
+      "pass": true,
+      "reason": "report contains all required keywords",
+      "started": "2026-08-11T18:21:30.323377+00:00",
+      "finished": "2026-08-11T18:23:29.693932+00:00",
+      "transcript": [
+        {
+          "tool": "execute_junos_command",
+          "args": {
+            "device": "vsrx-ci",
+            "command": "show ntp status"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fail-junos-any-any-permit",
+      "pass": true,
+      "reason": "report contains all required keywords",
+      "started": "2026-08-11T18:23:32.223792+00:00",
+      "finished": "2026-08-11T18:24:31.373478+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies"
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fleet-sync-exclusion-interfaces",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T18:24:34.567522+00:00",
+      "finished": "2026-08-11T18:25:29.340006+00:00",
+      "transcript": []
+    },
+    {
+      "id": "fleet-sync-zone-prune",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T18:25:31.860100+00:00",
+      "finished": "2026-08-11T18:26:40.585097+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "source",
+            "config_path": "security zones security-zone trust"
+          },
+          "tool_error": "Tool execution failed: token 'mechubbench' is not authorized for router 'source' (tool 'get_junos_config')"
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-add-dns",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T18:26:43.064161+00:00",
+      "finished": "2026-08-11T18:27:26.617786+00:00",
+      "transcript": [
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "set system services dns server 1.1.1.2\nset system services dns server 1.0.0.2",
+            "config_format": "set"
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system services dns"
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system"
+          }
+        },
+        {
+          "tool": "junos_config_diff",
+          "args": {
+            "device": "vsrx-ci",
+            "version": 0
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "set system services dns server 1.1.1.2",
+            "config_format": "set"
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "set system name-server 1.1.1.2",
+            "config_format": "set"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "set system name-server 1.1.1.2\nset system name-server 1.0.0.2",
+            "config_format": "set"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-add-ntp",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T18:27:29.088223+00:00",
+      "finished": "2026-08-11T18:27:40.243974+00:00",
+      "transcript": [
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "set system ntp server 132.163.97.1\nset system ntp server 128.138.140.44",
+            "config_format": "set"
+          }
+        }
+      ]
+    },
+    {
+      "id": "heal-junos-permissive-rule-01",
+      "pass": true,
+      "reason": "outcome assertions satisfied",
+      "started": "2026-08-11T18:27:43.318988+00:00",
+      "finished": "2026-08-11T18:28:33.875751+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policy"
+          },
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
+        },
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security"
+          }
+        },
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "sha256:801a91e27011cda0a5dcea068535c1c7597525edef39d0fcef586463666c7e12",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "delete security policy from-zone trust to-zone untrust policy demo-bad"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "junos-rollback-after-failure",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T18:28:38.437817+00:00",
+      "finished": "2026-08-11T18:29:06.514990+00:00",
+      "transcript": [
+        {
+          "tool": "rollback_config",
+          "args": {
+            "device": "vsrx-ci",
+            "version": 0,
+            "commit": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-junos-dns-baseline",
+      "pass": false,
+      "reason": "staged_diff matched none of: ['delete.*8\\\\.8\\\\.8\\\\.8', 'delete.*8\\\\.8\\\\.4\\\\.4', 'set.*domain-name.*mechub']",
+      "started": "2026-08-11T18:29:10.856983+00:00",
+      "finished": "2026-08-11T18:30:00.088519+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_candidate_fingerprint",
+          "args": {
+            "device": "vsrx-ci"
+          }
+        },
+        {
+          "tool": "create_junos_change_set",
+          "args": {
+            "device": "vsrx-ci",
+            "expected_fingerprint": "sha256:ccb5fcf417f088fb719fed72921080eefc9d1b541c9746369aca12b25fde2140",
+            "actions": [
+              {
+                "payload": {
+                  "format": "set",
+                  "text": "set system name-server 1.1.1.2\nset system name-server 1.0.0.2\nset system search-domain mechub.org"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "standardize-junos-ntp-baseline",
+      "pass": false,
+      "reason": "outcome: no staged diff captured",
+      "started": "2026-08-11T18:30:03.128504+00:00",
+      "finished": "2026-08-11T18:30:26.791241+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "system ntp"
+          }
+        },
+        {
+          "tool": "commit_check_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_text": "delete system ntp server 129.6.15.28\ndelete system ntp server 129.6.15.29\ndelete system ntp server 129.6.15.30\ndelete system ntp server 192.0.2.10\ndelete system ntp server 192.0.2.11\nset system ntp server 132.163.97.1\nset system ntp server 128.138.140.44",
+            "config_format": "set"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-duplicate-objects",
+      "pass": true,
+      "reason": "report contains all required keywords",
+      "started": "2026-08-11T18:30:30.226861+00:00",
+      "finished": "2026-08-11T18:31:10.824953+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security address-book"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tighten-junos-shadowed-rules",
+      "pass": true,
+      "reason": "report contains all required keywords",
+      "started": "2026-08-11T18:31:15.057243+00:00",
+      "finished": "2026-08-11T18:31:27.679659+00:00",
+      "transcript": [
+        {
+          "tool": "get_junos_config",
+          "args": {
+            "device": "vsrx-ci",
+            "config_path": "security policies from-zone trust to-zone untrust"
+          }
+        }
+      ]
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "vsrx-ci"
+  ]
+}
