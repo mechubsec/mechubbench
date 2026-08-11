@@ -216,6 +216,13 @@ class MCPClient:
 
         # Extract result from content
         result = data.get("result", {})
+        # Check for isError flag (true when tool execution failed)
+        if result.get("isError"):
+            # Tool failed - extract error message from content
+            content = result.get("content", [])
+            error_text = content[0].get("text", "Unknown tool error") if content else "Unknown tool error"
+            raise MCPError(f"Tool execution failed: {error_text}")
+
         content = result.get("content", [])
         if not content:
             raise MCPError(f"No content in MCP result for {tool_name}")
@@ -670,12 +677,21 @@ class AgenticRunner:
                             )
                             logger.debug(f"Teardown: discarded PAN-OS candidate for change-set {cs_id}")
                         elif vendor == "junos":
-                            # Junos: discard candidate config (explicit tool exists)
-                            self.mcp_client.call_tool(
-                                "discard_candidate",
-                                {"device": self.device, "timeout": 60}
-                            )
-                            logger.debug(f"Teardown: discarded Junos candidate for change-set {cs_id}")
+                            # Junos: try cancel_junos_change_set first (lifecycle exit), fall back to discard_candidate
+                            try:
+                                cancel_result = self.mcp_client.call_tool(
+                                    "cancel_junos_change_set",
+                                    {"change_set_id": cs_id, "device": self.device}
+                                )
+                                logger.debug(f"Teardown: cancelled change-set {cs_id} (state: {cancel_result.get('state', 'unknown')})")
+                            except MCPError as e:
+                                # Tool may not exist on older servers; fall back to discard
+                                logger.debug(f"cancel_junos_change_set unavailable for {cs_id}, using discard_candidate: {e}")
+                                self.mcp_client.call_tool(
+                                    "discard_candidate",
+                                    {"device": self.device, "timeout": 60}
+                                )
+                                logger.debug(f"Teardown: discarded Junos candidate for change-set {cs_id}")
                         else:
                             logger.warning(f"Teardown: unknown vendor '{vendor}', cannot discard change-set {cs_id}")
                     except Exception as teardown_error:

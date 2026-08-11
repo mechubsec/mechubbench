@@ -850,7 +850,7 @@ class TestAgenticRunner:
         # First call returns change-set ID
         mock_mcp.call_tool.side_effect = [
             {"change_set_id": "cs-123", "status": "created"},  # create_junos_change_set
-            {"success": True, "message": "candidate configuration discarded"},  # discard_candidate in teardown
+            {"state": "cancelled"},  # cancel_junos_change_set in teardown
         ]
 
         agentic_runner = runner.AgenticRunner(
@@ -861,7 +861,7 @@ class TestAgenticRunner:
 
         result = agentic_runner.run_scenario(scenario, "test-model", tools)
 
-        # Should have called create_junos_change_set and then discard_candidate
+        # Should have called create_junos_change_set and then cancel_junos_change_set
         assert mock_mcp.call_tool.call_count == 2
 
         # EXACT assertions on tool name and arguments
@@ -869,8 +869,8 @@ class TestAgenticRunner:
         assert first_call[0][0] == "create_junos_change_set"
 
         second_call = mock_mcp.call_tool.call_args_list[1]
-        assert second_call[0][0] == "discard_candidate"
-        assert second_call[0][1] == {"device": "test-vsrx", "timeout": 60}
+        assert second_call[0][0] == "cancel_junos_change_set"
+        assert second_call[0][1] == {"change_set_id": "cs-123", "device": "test-vsrx"}
 
     def test_teardown_on_exception(self):
         """Change-sets are discarded even when scenario raises exception."""
@@ -1090,7 +1090,7 @@ class TestAgenticRunner:
             }
         ]
 
-        call_count = {"create": 0, "get_status": 0, "discard": 0}
+        call_count = {"create": 0, "get_status": 0, "cancel": 0}
 
         def mock_calls(tool_name, args):
             if tool_name == "create_junos_change_set":
@@ -1101,9 +1101,9 @@ class TestAgenticRunner:
                 call_count["get_status"] += 1
                 # Also return as JSON string
                 return '{"change_set_id": "cs-abc123", "payload": "set test-config"}'
-            elif tool_name == "discard_candidate":
-                call_count["discard"] += 1
-                return {"success": True}
+            elif tool_name == "cancel_junos_change_set":
+                call_count["cancel"] += 1
+                return {"state": "cancelled"}
             return {}
 
         mock_mcp = Mock()
@@ -1121,7 +1121,7 @@ class TestAgenticRunner:
         # Should have tracked the change-set ID (from JSON string)
         assert call_count["create"] == 1
         assert call_count["get_status"] == 1  # Capture should have run
-        assert call_count["discard"] == 1  # Teardown should have run
+        assert call_count["cancel"] == 1  # Teardown should have run (cancel)
 
         # Should pass (evidence captured)
         assert result["pass"] is True
@@ -1352,8 +1352,8 @@ class TestScenarioSetupTeardown:
                     "payload": "set system ntp server 132.163.97.1",
                     "device": "test-device"
                 }
-            elif tool_name == "discard_candidate":
-                return {"success": True}
+            elif tool_name == "cancel_junos_change_set":
+                return {"state": "cancelled"}
             return {}
 
         mock_mcp = Mock()
@@ -1368,15 +1368,15 @@ class TestScenarioSetupTeardown:
 
         result = agentic_runner.run_scenario(scenario, "test-model", tools)
 
-        # Verify call order: create → get_status → discard
+        # Verify call order: create → get_status → cancel
         assert "create_junos_change_set" in call_order
         assert "get_junos_change_set_status" in call_order
-        assert "discard_candidate" in call_order
+        assert "cancel_junos_change_set" in call_order
 
-        # get_junos_change_set_status must come BEFORE discard_candidate
+        # get_junos_change_set_status must come BEFORE cancel_junos_change_set
         status_idx = call_order.index("get_junos_change_set_status")
-        discard_idx = call_order.index("discard_candidate")
-        assert status_idx < discard_idx, "Capture must happen before teardown"
+        cancel_idx = call_order.index("cancel_junos_change_set")
+        assert status_idx < cancel_idx, "Capture must happen before teardown"
 
         # Verify outcome passed (assertions matched against JSON)
         assert result["pass"] is True
@@ -1517,3 +1517,283 @@ class TestOllamaHealthProbe:
                 with patch("time.sleep"):  # Skip actual sleep in test
                     with pytest.raises(TimeoutError, match="unresponsive after retry"):
                         probe.wait_for_settle(model="test-model", timeout=60.0)
+
+
+class TestMCPErrorHandling:
+    """Test MCP error handling with isError flag."""
+
+    def test_is_error_flag_raises_mcp_error(self):
+        """Result with isError=true raises MCPError with error text."""
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "s1"}
+        init_response.json.return_value = {"jsonrpc": "2.0", "id": 0, "result": {}}
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
+
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
+
+        # Tool call returns isError=true with error message
+        error_response = Mock()
+        error_response.headers = {"content-type": "application/json"}
+        error_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "isError": True,
+                "content": [{
+                    "type": "text",
+                    "text": "Device connection timeout"
+                }]
+            }
+        }
+        error_response.raise_for_status = Mock()
+        error_response.text = ""
+
+        with patch("httpx.post", side_effect=[init_response, initialized_response, error_response]):
+            client = runner.MCPClient("http://test/mcp", "token")
+
+            with pytest.raises(runner.MCPError) as exc_info:
+                client.call_tool("get_junos_config", {"device": "unreachable"})
+
+            # Should raise MCPError with the error text
+            assert "Tool execution failed" in str(exc_info.value)
+            assert "Device connection timeout" in str(exc_info.value)
+
+    def test_is_error_false_returns_normal_result(self):
+        """Result with isError=false or absent processes normally."""
+        init_response = Mock()
+        init_response.headers = {"Mcp-Session-Id": "s1"}
+        init_response.json.return_value = {"jsonrpc": "2.0", "id": 0, "result": {}}
+        init_response.raise_for_status = Mock()
+        init_response.text = ""
+
+        initialized_response = Mock()
+        initialized_response.headers = {}
+        initialized_response.raise_for_status = Mock()
+
+        # Tool call returns success (isError absent)
+        success_response = Mock()
+        success_response.headers = {"content-type": "application/json"}
+        success_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "content": [{
+                    "type": "text",
+                    "text": json.dumps({"status": "success", "data": "config"})
+                }]
+            }
+        }
+        success_response.raise_for_status = Mock()
+        success_response.text = ""
+
+        with patch("httpx.post", side_effect=[init_response, initialized_response, success_response]):
+            client = runner.MCPClient("http://test/mcp", "token")
+            result = client.call_tool("get_junos_config", {"device": "test"})
+
+            # Should return normal result
+            assert result == {"status": "success", "data": "config"}
+
+
+class TestTeardownImprovements:
+    """Test teardown improvements with cancel_junos_change_set."""
+
+    def test_cancel_junos_change_set_called_in_teardown(self):
+        """Junos teardown calls cancel_junos_change_set when available."""
+        scenario = {
+            "id": "test-cancel",
+            "vendor": "junos",
+            "prompt": "Create a change",
+            "expected_calls": [{"tool": "create_junos_change_set"}],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"config": "set test"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            },
+        ]
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.side_effect = [
+            {"change_set_id": "cs-123", "status": "created"},  # create_junos_change_set
+            {"state": "cancelled"},  # cancel_junos_change_set in teardown
+        ]
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-vsrx",
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should have called create_junos_change_set and then cancel_junos_change_set
+        assert mock_mcp.call_tool.call_count == 2
+
+        # EXACT assertions on tool name and arguments
+        first_call = mock_mcp.call_tool.call_args_list[0]
+        assert first_call[0][0] == "create_junos_change_set"
+
+        second_call = mock_mcp.call_tool.call_args_list[1]
+        assert second_call[0][0] == "cancel_junos_change_set"
+        assert second_call[0][1] == {"change_set_id": "cs-123", "device": "test-vsrx"}
+
+    def test_fallback_to_discard_when_cancel_unavailable(self):
+        """Teardown falls back to discard_candidate when cancel_junos_change_set not available."""
+        scenario = {
+            "id": "test-fallback",
+            "vendor": "junos",
+            "prompt": "Create a change",
+            "expected_calls": [{"tool": "create_junos_change_set"}],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"config": "set test"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            },
+        ]
+
+        mock_mcp = Mock()
+        # First call creates change-set
+        # Second call (cancel) fails with tool not found
+        # Third call (discard fallback) succeeds
+        mock_mcp.call_tool.side_effect = [
+            {"change_set_id": "cs-456", "status": "created"},  # create_junos_change_set
+            runner.MCPError("Tool execution failed: tool 'cancel_junos_change_set' not found"),  # cancel fails
+            {"success": True, "message": "candidate configuration discarded"},  # discard_candidate fallback
+        ]
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-vsrx",
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should have called create, cancel (failed), and discard (fallback)
+        assert mock_mcp.call_tool.call_count == 3
+
+        # Verify call sequence
+        first_call = mock_mcp.call_tool.call_args_list[0]
+        assert first_call[0][0] == "create_junos_change_set"
+
+        second_call = mock_mcp.call_tool.call_args_list[1]
+        assert second_call[0][0] == "cancel_junos_change_set"
+
+        third_call = mock_mcp.call_tool.call_args_list[2]
+        assert third_call[0][0] == "discard_candidate"
+        assert third_call[0][1] == {"device": "test-vsrx", "timeout": 60}
+
+    def test_panos_teardown_unchanged(self):
+        """PAN-OS teardown still uses discard_panos_candidate (no change)."""
+        scenario = {
+            "id": "test-panos",
+            "vendor": "panos",
+            "prompt": "Create a change",
+            "expected_calls": [{"tool": "create_panos_change_set"}],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = [
+            {"name": "create_panos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_panos_change_set",
+                                "arguments": '{}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            },
+        ]
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.side_effect = [
+            {"change_set_id": "cs-789", "status": "created"},  # create_panos_change_set
+            {"success": True},  # discard_panos_candidate
+        ]
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-pa",
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should have called create and discard (no cancel for PAN-OS)
+        assert mock_mcp.call_tool.call_count == 2
+
+        first_call = mock_mcp.call_tool.call_args_list[0]
+        assert first_call[0][0] == "create_panos_change_set"
+
+        second_call = mock_mcp.call_tool.call_args_list[1]
+        assert second_call[0][0] == "discard_panos_candidate"
+        assert second_call[0][1] == {"device": "test-pa"}
