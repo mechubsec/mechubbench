@@ -1,141 +1,371 @@
 [
   {
-    "name": "get_panos_config",
-    "description": "Read running or candidate PAN-OS configuration under /config. Returns XML configuration data.",
-    "parameters": {
+    "name": "create_panos_change_set",
+    "description": "Plan and persist 1-64 ordered PAN-OS candidate actions under inventory and token XPath/action scopes",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "ChangeSetAction": {
+          "description": "One action in an exact, digest-bound change set.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "description": "Set or delete.",
+              "$ref": "#/$defs/StageAction"
+            },
+            "xpath": {
+              "description": "Exact XPath within both inventory and token policy.",
+              "type": "string"
+            },
+            "element": {
+              "description": "One XML element; required for set and forbidden for delete.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "destructive_confirmation": {
+              "description": "For delete, must equal `DELETE <xpath>` exactly.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "xpath"
+          ]
+        },
+        "StageAction": {
+          "description": "Candidate configuration action supported by the guarded stage tool.",
+          "oneOf": [
+            {
+              "description": "Merge the supplied XML element at the XPath.",
+              "type": "string",
+              "const": "set"
+            },
+            {
+              "description": "Delete the exact XPath after policy and confirmation checks.",
+              "type": "string",
+              "const": "delete"
+            }
+          ]
+        }
+      },
+      "required": [
+        "device",
+        "expected_candidate_fingerprint",
+        "actions"
+      ],
       "type": "object",
       "properties": {
         "device": {
-          "type": "string",
-          "description": "Exact inventory device name"
+          "description": "Exact inventory device.",
+          "type": "string"
         },
-        "source": {
-          "type": "string",
-          "enum": ["running", "candidate"],
-          "description": "Running or candidate configuration; defaults to running",
-          "default": "running"
+        "expected_candidate_fingerprint": {
+          "description": "Candidate fingerprint to which this plan is bound.",
+          "type": "string"
         },
-        "xpath": {
-          "type": "string",
-          "description": "Optional XPath rooted at /config; defaults to /config"
-        },
-        "max_bytes": {
-          "type": "integer",
-          "description": "Optional returned-content cap; defaults to 524288 and cannot exceed 5242880"
-        },
-        "max_lines": {
-          "type": "integer",
-          "description": "Optional returned-line cap; defaults to 10000 and cannot exceed 100000"
+        "actions": {
+          "description": "Ordered actions; all are covered by one digest and approval.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChangeSetAction"
+          }
         }
       },
-      "required": ["device"]
+      "additionalProperties": false
     }
   },
   {
     "name": "diff_panos_candidate",
-    "description": "Show difference between candidate and running configuration. Returns XML diff.",
-    "parameters": {
+    "description": "Return a bounded PAN-OS change summary for the exact staged candidate fingerprint",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "device",
+        "operation_id",
+        "expected_candidate_fingerprint"
+      ],
+      "additionalProperties": false,
       "type": "object",
       "properties": {
         "device": {
-          "type": "string",
-          "description": "Exact inventory device name"
+          "description": "Exact inventory device.",
+          "type": "string"
+        },
+        "operation_id": {
+          "description": "Operation identifier returned by stage.",
+          "type": "string"
+        },
+        "expected_candidate_fingerprint": {
+          "description": "Candidate fingerprint expected at this lifecycle step.",
+          "type": "string"
         }
-      },
-      "required": ["device"]
+      }
     }
   },
   {
-    "name": "create_panos_change_set",
-    "description": "Create a change set (plan) for multi-action PAN-OS configuration changes. Requires approval before application.",
-    "parameters": {
+    "name": "discard_panos_candidate",
+    "description": "Discard a staged operation through an admin-scoped partial candidate revert",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "device",
+        "operation_id",
+        "expected_candidate_fingerprint"
+      ],
+      "additionalProperties": false,
       "type": "object",
       "properties": {
         "device": {
-          "type": "string",
-          "description": "Exact inventory device"
+          "description": "Exact inventory device.",
+          "type": "string"
+        },
+        "operation_id": {
+          "description": "Operation identifier returned by stage.",
+          "type": "string"
         },
         "expected_candidate_fingerprint": {
-          "type": "string",
-          "description": "Candidate fingerprint to which this plan is bound"
+          "description": "Candidate fingerprint expected at this lifecycle step.",
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "execute_panos_op",
+    "description": "Execute a read-only PAN-OS XML command rooted at <show> on an authorized device, with output caps",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "device",
+        "command"
+      ],
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "device": {
+          "description": "Exact inventory device name.",
+          "type": "string"
         },
-        "actions": {
-          "type": "array",
-          "description": "Ordered actions; all covered by one digest and approval",
-          "items": {
-            "type": "object",
-            "properties": {
-              "action": {
-                "type": "string",
-                "enum": ["set", "delete"],
-                "description": "Set (merge XML) or delete"
-              },
-              "xpath": {
-                "type": "string",
-                "description": "Exact XPath within both inventory and token policy"
-              },
-              "element": {
-                "type": "string",
-                "description": "One XML element; required for set and forbidden for delete"
-              },
-              "destructive_confirmation": {
-                "type": "string",
-                "description": "For delete, must equal 'DELETE <xpath>' exactly"
-              }
+        "command": {
+          "description": "A single XML operational command rooted at `<show>`.",
+          "type": "string"
+        },
+        "max_bytes": {
+          "description": "Optional returned-content cap; defaults to 524288 and cannot exceed 5242880.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0,
+          "default": null
+        },
+        "max_lines": {
+          "description": "Optional returned-line cap; defaults to 10000 and cannot exceed 100000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0,
+          "default": null
+        }
+      }
+    }
+  },
+  {
+    "name": "gather_device_facts",
+    "description": "Gather hostname, model, serial, version, management IP, and uptime from an authorized PAN-OS device",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "device"
+      ],
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "device": {
+          "description": "Exact inventory device name.",
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_candidate_fingerprint",
+    "description": "Return a SHA-256 fingerprint over all operator-authorized candidate subtrees",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "device"
+      ],
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "device": {
+          "description": "Exact inventory device.",
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_panos_change_set",
+    "description": "Return the exact actions, digest, approval, expiry, and operation state for review or recovery",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "device",
+        "change_set_id"
+      ],
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "device": {
+          "description": "Exact inventory device.",
+          "type": "string"
+        },
+        "change_set_id": {
+          "description": "Change-set identifier.",
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_panos_config",
+    "description": "Read running or candidate PAN-OS configuration at a validated /config XPath on an authorized device",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "ConfigSource": {
+          "description": "PAN-OS configuration data source.",
+          "oneOf": [
+            {
+              "description": "Active/running configuration via XML API action `show`.",
+              "type": "string",
+              "const": "running"
             },
-            "required": ["action", "xpath"]
-          }
+            {
+              "description": "Candidate configuration via XML API action `get`.",
+              "type": "string",
+              "const": "candidate"
+            }
+          ]
         }
       },
-      "required": ["device", "expected_candidate_fingerprint", "actions"]
-    }
-  },
-  {
-    "name": "approve_panos_change_set",
-    "description": "Approve a PAN-OS change set. Must be called by a different principal than creator (two-person control).",
-    "parameters": {
+      "required": [
+        "device"
+      ],
       "type": "object",
       "properties": {
-        "change_set_id": {
-          "type": "string",
-          "description": "Change-set ID returned by create"
-        },
         "device": {
-          "type": "string",
-          "description": "Device name. Required because change sets are indexed by (id, device)."
+          "description": "Exact inventory device name.",
+          "type": "string"
         },
-        "expected_digest": {
-          "type": "string",
-          "description": "Expected plan digest. Approver must confirm it matches what they reviewed."
+        "source": {
+          "description": "Running or candidate configuration; defaults to running.",
+          "$ref": "#/$defs/ConfigSource",
+          "default": "running"
+        },
+        "xpath": {
+          "description": "Optional XPath rooted at `/config`; defaults to `/config`.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "max_bytes": {
+          "description": "Optional returned-content cap; defaults to 524288 and cannot exceed 5242880.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0,
+          "default": null
+        },
+        "max_lines": {
+          "description": "Optional returned-line cap; defaults to 10000 and cannot exceed 100000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0,
+          "default": null
         }
       },
-      "required": ["change_set_id", "device", "expected_digest"]
+      "additionalProperties": false
     }
   },
   {
-    "name": "apply_panos_change_set",
-    "description": "Apply an approved PAN-OS change set to the device. Commits configuration changes.",
-    "parameters": {
+    "name": "get_panos_operation",
+    "description": "Return safe status for an owned PAN-OS candidate lifecycle operation",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "device",
+        "operation_id"
+      ],
+      "additionalProperties": false,
       "type": "object",
       "properties": {
-        "change_set_id": {
-          "type": "string",
-          "description": "Change-set ID to apply"
+        "device": {
+          "description": "Exact inventory device.",
+          "type": "string"
         },
-        "expected_digest": {
-          "type": "string",
-          "description": "Expected plan digest. Prevents applying tampered plan."
+        "operation_id": {
+          "description": "Operation identifier returned by stage.",
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "list_devices",
+    "description": "List authorized PAN-OS devices and safe metadata; never returns API keys",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  {
+    "name": "validate_panos_candidate",
+    "description": "Validate a staged candidate and make only the same fingerprint eligible for commit",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "required": [
+        "device",
+        "operation_id",
+        "expected_candidate_fingerprint"
+      ],
+      "additionalProperties": false,
+      "type": "object",
+      "properties": {
+        "device": {
+          "description": "Exact inventory device.",
+          "type": "string"
+        },
+        "operation_id": {
+          "description": "Operation identifier returned by stage.",
+          "type": "string"
         },
         "expected_candidate_fingerprint": {
-          "type": "string",
-          "description": "Expected candidate fingerprint at apply time. Rejected if candidate changed."
-        },
-        "device": {
-          "type": "string",
-          "description": "Target device from inventory"
+          "description": "Candidate fingerprint expected at this lifecycle step.",
+          "type": "string"
         }
-      },
-      "required": ["change_set_id", "expected_digest", "expected_candidate_fingerprint", "device"]
+      }
     }
   }
 ]

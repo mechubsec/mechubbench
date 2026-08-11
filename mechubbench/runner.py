@@ -1116,6 +1116,50 @@ def prepare_setup_config(setup: str, device: str) -> str:
     )
 
 
+def fetch_config_fingerprint(mcp_client, device: str) -> str | None:
+    """Fetch the device's candidate config fingerprint, or None if unavailable.
+
+    On a clean device the candidate equals the running config, so this is the
+    committed-config identity used for residue detection.
+    """
+    try:
+        fp_result = mcp_client.call_tool(
+            "get_junos_candidate_fingerprint", {"device": device}
+        )
+    except MCPError as e:
+        logger.warning(f"Config fingerprint unavailable for {device}: {e}")
+        return None
+    if isinstance(fp_result, str):
+        try:
+            fp_result = json.loads(fp_result)
+        except json.JSONDecodeError:
+            return None
+    if isinstance(fp_result, dict):
+        return fp_result.get("candidate_fingerprint")
+    return None
+
+
+def verify_baseline_restored(mcp_client, device: str, baseline_fingerprint: str | None, scenario_id: str) -> None:
+    """Abort if the device's config fingerprint no longer matches the pre-setup baseline.
+
+    A teardown rollback that lands on the wrong commit leaves COMMITTED residue
+    that a candidate-vs-running diff (version 0) cannot see. Raises RuntimeError
+    on mismatch; a missing baseline (None) skips the check.
+    """
+    if not baseline_fingerprint:
+        return
+    post_fp = fetch_config_fingerprint(mcp_client, device)
+    if post_fp != baseline_fingerprint:
+        logger.error(
+            f"ABORT: Committed-residue check failed - config fingerprint after "
+            f"teardown ({post_fp}) does not match pre-setup baseline "
+            f"({baseline_fingerprint}). Device {device} has committed drift. Aborting sweep."
+        )
+        raise RuntimeError(
+            f"Teardown fingerprint mismatch for {scenario_id}: committed residue"
+        )
+
+
 def run_all_scenarios_agentic(
     scenarios: list[dict],
     model: str,
@@ -1208,8 +1252,14 @@ def run_all_scenarios_agentic(
 
         # Apply scenario fault setup if setup client exists and scenario has setup block
         setup_applied = False
+        baseline_fingerprint = None
         if setup_client and scenario.get("setup"):
             setup_config = prepare_setup_config(scenario["setup"], device)
+
+            # Record the pre-setup config fingerprint; the teardown compares
+            # against it to catch COMMITTED residue, which a candidate-vs-running
+            # diff (version 0) is blind to.
+            baseline_fingerprint = fetch_config_fingerprint(mcp_client, device)
 
             logger.info(f"Applying fault setup for scenario {scenario['id']}")
             try:
@@ -1270,6 +1320,13 @@ def run_all_scenarios_agentic(
                             f"Device {device} may be in dirty state. Aborting sweep."
                         )
                         raise RuntimeError(f"Rollback verification failed for {scenario['id']}: dirty candidate")
+
+                    # Verify COMMITTED state restored, not just candidate
+                    # cleanliness: a rollback that lands on the wrong commit
+                    # leaves residue a version-0 diff cannot see.
+                    verify_baseline_restored(
+                        mcp_client, device, baseline_fingerprint, scenario["id"]
+                    )
 
                     logger.info(f"Fault setup rolled back cleanly for {scenario['id']}")
 

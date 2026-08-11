@@ -1893,3 +1893,43 @@ class TestStagedPayloadCapture:
         )
         result = agentic_runner.run_scenario(scenario, "test-model", tools)
         assert result["pass"] is True, f"expected pass, got: {result.get('reason')}"
+
+
+class TestCommittedResidueCheck:
+    """Teardown verifies the config fingerprint returns to the pre-setup baseline."""
+
+    def _mcp_with_fp(self, fingerprint):
+        mcp = Mock()
+        mcp.call_tool.return_value = {"device": "d", "candidate_fingerprint": fingerprint}
+        return mcp
+
+    def test_matching_fingerprint_passes(self):
+        mcp = self._mcp_with_fp("sha256:base")
+        runner.verify_baseline_restored(mcp, "d", "sha256:base", "residue-test")
+        mcp.call_tool.assert_called_once_with(
+            "get_junos_candidate_fingerprint", {"device": "d"}
+        )
+
+    def test_mismatched_fingerprint_aborts(self):
+        import pytest
+        mcp = self._mcp_with_fp("sha256:DIFFERENT")
+        with pytest.raises(RuntimeError, match="committed residue"):
+            runner.verify_baseline_restored(mcp, "d", "sha256:base", "residue-test")
+
+    def test_missing_baseline_skips_check(self):
+        mcp = Mock()
+        runner.verify_baseline_restored(mcp, "d", None, "residue-test")
+        mcp.call_tool.assert_not_called()
+
+    def test_string_result_is_parsed(self):
+        import json as jsonlib
+        mcp = Mock()
+        mcp.call_tool.return_value = jsonlib.dumps(
+            {"device": "d", "candidate_fingerprint": "sha256:base"}
+        )
+        runner.verify_baseline_restored(mcp, "d", "sha256:base", "residue-test")
+
+    def test_fetch_fingerprint_tolerates_mcp_error(self):
+        mcp = Mock()
+        mcp.call_tool.side_effect = runner.MCPError("boom")
+        assert runner.fetch_config_fingerprint(mcp, "d") is None

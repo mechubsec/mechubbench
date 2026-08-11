@@ -90,7 +90,19 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
 
         try:
-            device_list_result = mcp_client.call_tool("get_router_list", {})
+            # Junos servers expose get_router_list; PAN-OS servers expose
+            # list_devices (returns {"devices": [{"name": ...}, ...]}).
+            try:
+                device_list_result = mcp_client.call_tool("get_router_list", {})
+            except runner.MCPError:
+                panos_result = mcp_client.call_tool("list_devices", {})
+                if isinstance(panos_result, dict):
+                    device_list_result = [
+                        d.get("name") for d in panos_result.get("devices", [])
+                        if isinstance(d, dict) and d.get("name")
+                    ]
+                else:
+                    device_list_result = panos_result
 
             # Handle both response shapes: bare list (actual) or dict with "routers" key
             if isinstance(device_list_result, list):
