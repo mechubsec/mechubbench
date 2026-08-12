@@ -1126,6 +1126,277 @@ class TestAgenticRunner:
         # Should pass (evidence captured)
         assert result["pass"] is True
 
+    def test_no_teardown_flag_skips_discard(self):
+        """With no_teardown=True, change-sets are not cancelled/discarded."""
+        scenario = {
+            "id": "test-no-teardown",
+            "vendor": "junos",
+            "prompt": "Create a change",
+            "expected_calls": [
+                {"tool": "create_junos_change_set"},
+            ],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"actions": [{"payload": {"text": "set test"}}]}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            },
+        ]
+
+        mock_mcp = Mock()
+        # Only create_junos_change_set is called, NO cancel/discard
+        mock_mcp.call_tool.return_value = {"change_set_id": "cs-456", "status": "created"}
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-vsrx",
+            no_teardown=True,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should have called create_junos_change_set but NOT cancel_junos_change_set
+        assert mock_mcp.call_tool.call_count == 1
+        first_call = mock_mcp.call_tool.call_args_list[0]
+        assert first_call[0][0] == "create_junos_change_set"
+
+        # Result should contain left_staged with the change-set ID
+        assert "left_staged" in result
+        assert result["left_staged"] == [{"device": "test-vsrx", "change_set_id": "cs-456"}]
+
+    def test_no_teardown_false_runs_teardown(self):
+        """With no_teardown=False (default), teardown runs normally."""
+        scenario = {
+            "id": "test-teardown-default",
+            "vendor": "junos",
+            "prompt": "Create a change",
+            "expected_calls": [
+                {"tool": "create_junos_change_set"},
+            ],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_junos_change_set",
+                                "arguments": '{"actions": []}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            },
+        ]
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.side_effect = [
+            {"change_set_id": "cs-789", "status": "created"},  # create
+            {"state": "cancelled"},  # cancel in teardown
+        ]
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-vsrx",
+            no_teardown=False,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should have called create AND cancel
+        assert mock_mcp.call_tool.call_count == 2
+        second_call = mock_mcp.call_tool.call_args_list[1]
+        assert second_call[0][0] == "cancel_junos_change_set"
+        assert second_call[0][1] == {"change_set_id": "cs-789", "device": "test-vsrx"}
+
+        # Result should NOT contain left_staged
+        assert "left_staged" not in result
+
+    def test_no_teardown_panos_vendor(self):
+        """With no_teardown=True, PAN-OS change-sets are also preserved."""
+        scenario = {
+            "id": "test-no-teardown-panos",
+            "vendor": "panos",
+            "prompt": "Create a change",
+            "expected_calls": [
+                {"tool": "create_panos_change_set"},
+            ],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = [
+            {"name": "create_panos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {  # Turn 1: create change-set
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "create_panos_change_set",
+                                "arguments": '{}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {  # Turn 2: stop
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            },
+        ]
+
+        mock_mcp = Mock()
+        # Only create_panos_change_set is called, NO discard_panos_candidate
+        mock_mcp.call_tool.return_value = {"change_set_id": "panos-cs-111", "status": "created"}
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="test-pa",
+            no_teardown=True,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # Should have called create_panos_change_set but NOT discard_panos_candidate
+        assert mock_mcp.call_tool.call_count == 1
+        first_call = mock_mcp.call_tool.call_args_list[0]
+        assert first_call[0][0] == "create_panos_change_set"
+
+        # Result should contain left_staged
+        assert "left_staged" in result
+        assert result["left_staged"] == [{"device": "test-pa", "change_set_id": "panos-cs-111"}]
+
+    def test_scoring_identical_with_and_without_no_teardown(self):
+        """Scoring output is identical regardless of no_teardown flag."""
+        scenario = {
+            "id": "test-scoring-identity",
+            "vendor": "junos",
+            "prompt": "Create a change",
+            "expected_calls": [
+                {"tool": "create_junos_change_set"},
+            ],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+        tools = [
+            {"name": "create_junos_change_set", "description": "Create", "parameters": {"type": "object"}},
+        ]
+
+        def make_llm_mock():
+            mock_llm = Mock()
+            mock_llm.complete_with_tools.side_effect = [
+                {  # Turn 1: create change-set
+                    "choices": [{
+                        "message": {
+                            "tool_calls": [{
+                                "type": "function",
+                                "function": {
+                                    "name": "create_junos_change_set",
+                                    "arguments": '{}'
+                                }
+                            }]
+                        },
+                        "finish_reason": "tool_calls"
+                    }]
+                },
+                {  # Turn 2: stop
+                    "choices": [{
+                        "message": {"content": "Done"},
+                        "finish_reason": "stop"
+                    }]
+                },
+            ]
+            return mock_llm
+
+        # Run with no_teardown=False
+        mock_mcp_false = Mock()
+        mock_mcp_false.call_tool.side_effect = [
+            {"change_set_id": "cs-abc", "status": "created"},  # create
+            {"state": "cancelled"},  # cancel
+        ]
+        runner_false = runner.AgenticRunner(
+            llm_client=make_llm_mock(),
+            mcp_client=mock_mcp_false,
+            device="test-vsrx",
+            no_teardown=False,
+        )
+        result_false = runner_false.run_scenario(scenario, "test-model", tools)
+
+        # Run with no_teardown=True
+        mock_mcp_true = Mock()
+        mock_mcp_true.call_tool.side_effect = [
+            {"change_set_id": "cs-abc", "status": "created"},  # create (no cancel)
+        ]
+        runner_true = runner.AgenticRunner(
+            llm_client=make_llm_mock(),
+            mcp_client=mock_mcp_true,
+            device="test-vsrx",
+            no_teardown=True,
+        )
+        result_true = runner_true.run_scenario(scenario, "test-model", tools)
+
+        # Scoring-relevant fields should be identical
+        assert result_false["pass"] == result_true["pass"]
+        assert result_false["reason"] == result_true["reason"]
+        assert result_false["transcript"] == result_true["transcript"]
+        assert result_false["scoring_mode"] == result_true["scoring_mode"]
+
+        # Only difference: left_staged present in result_true
+        assert "left_staged" not in result_false
+        assert "left_staged" in result_true
+
 
 class TestDeviceTemplateSubstitution:
     """Test {{device}} template substitution in scenarios."""

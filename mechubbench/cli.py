@@ -162,6 +162,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             temperature=args.temperature,
             num_predict=args.num_predict,
             keep_alive=args.keep_alive,
+            no_teardown=args.no_teardown,
         )
     else:
         # Blind mode (original single-pass)
@@ -399,6 +400,11 @@ def main() -> None:
         "--keep-alive",
         default="30m",
         help="Ollama keep-alive duration (default: 30m)",
+    )
+    run_parser.add_argument(
+        "--no-teardown",
+        action="store_true",
+        help="Skip change-set teardown (leaves staged change-sets live on device for demo use; not for benchmarking)",
     )
     run_parser.set_defaults(func=cmd_run)
 

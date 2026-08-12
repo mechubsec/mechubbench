@@ -402,6 +402,7 @@ class AgenticRunner:
         device: str,
         max_turns: int = 12,
         forbidden_tools: set[str] | None = None,
+        no_teardown: bool = False,
     ):
         """Initialize agentic runner.
 
@@ -411,11 +412,13 @@ class AgenticRunner:
             device: Device name to use for tool calls
             max_turns: Maximum conversation turns (default 12)
             forbidden_tools: Additional forbidden tools beyond hard-coded set
+            no_teardown: Skip change-set teardown (for demo use)
         """
         self.llm_client = llm_client
         self.mcp_client = mcp_client
         self.device = device
         self.max_turns = max_turns
+        self.no_teardown = no_teardown
 
         # Merge hard-coded forbidden tools with any extras
         self.forbidden_tools = self.FORBIDDEN_MUTATING_TOOLS.copy()
@@ -679,44 +682,56 @@ class AgenticRunner:
 
             # SAFETY RAIL: Discard all created change-sets, even on error paths
             # (absolute requirement per brief: "every change-set discarded in teardown even on error")
+            # UNLESS --no-teardown flag is set (for demo use)
+            left_staged = []
             if change_set_ids:
                 vendor = scenario.get("vendor", "junos")
-                logger.info(
-                    f"Teardown: discarding {len(change_set_ids)} change-set(s) for {vendor} scenario {scenario['id']}"
-                )
 
-                for cs_id in change_set_ids:
-                    try:
-                        if vendor == "panos":
-                            # PAN-OS: discard candidate config
-                            self.mcp_client.call_tool(
-                                "discard_panos_candidate",
-                                {"device": self.device}
-                            )
-                            logger.debug(f"Teardown: discarded PAN-OS candidate for change-set {cs_id}")
-                        elif vendor == "junos":
-                            # Junos: try cancel_junos_change_set first (lifecycle exit), fall back to discard_candidate
-                            try:
-                                cancel_result = self.mcp_client.call_tool(
-                                    "cancel_junos_change_set",
-                                    {"change_set_id": cs_id, "device": self.device}
-                                )
-                                logger.debug(f"Teardown: cancelled change-set {cs_id} (state: {cancel_result.get('state', 'unknown')})")
-                            except MCPError as e:
-                                # Tool may not exist on older servers; fall back to discard
-                                logger.debug(f"cancel_junos_change_set unavailable for {cs_id}, using discard_candidate: {e}")
+                if self.no_teardown:
+                    # Demo mode: leave change-sets staged
+                    logger.info(
+                        f"--no-teardown set: leaving {len(change_set_ids)} change-set(s) staged for {vendor} scenario {scenario['id']}"
+                    )
+                    for cs_id in change_set_ids:
+                        left_staged.append({"device": self.device, "change_set_id": cs_id})
+                else:
+                    # Normal mode: discard all change-sets
+                    logger.info(
+                        f"Teardown: discarding {len(change_set_ids)} change-set(s) for {vendor} scenario {scenario['id']}"
+                    )
+
+                    for cs_id in change_set_ids:
+                        try:
+                            if vendor == "panos":
+                                # PAN-OS: discard candidate config
                                 self.mcp_client.call_tool(
-                                    "discard_candidate",
-                                    {"device": self.device, "timeout": 60}
+                                    "discard_panos_candidate",
+                                    {"device": self.device}
                                 )
-                                logger.debug(f"Teardown: discarded Junos candidate for change-set {cs_id}")
-                        else:
-                            logger.warning(f"Teardown: unknown vendor '{vendor}', cannot discard change-set {cs_id}")
-                    except Exception as teardown_error:
-                        # Log teardown failures but don't propagate - scenario result already determined
-                        logger.warning(
-                            f"Teardown failed for change-set {cs_id} ({vendor}): {teardown_error}"
-                        )
+                                logger.debug(f"Teardown: discarded PAN-OS candidate for change-set {cs_id}")
+                            elif vendor == "junos":
+                                # Junos: try cancel_junos_change_set first (lifecycle exit), fall back to discard_candidate
+                                try:
+                                    cancel_result = self.mcp_client.call_tool(
+                                        "cancel_junos_change_set",
+                                        {"change_set_id": cs_id, "device": self.device}
+                                    )
+                                    logger.debug(f"Teardown: cancelled change-set {cs_id} (state: {cancel_result.get('state', 'unknown')})")
+                                except MCPError as e:
+                                    # Tool may not exist on older servers; fall back to discard
+                                    logger.debug(f"cancel_junos_change_set unavailable for {cs_id}, using discard_candidate: {e}")
+                                    self.mcp_client.call_tool(
+                                        "discard_candidate",
+                                        {"device": self.device, "timeout": 60}
+                                    )
+                                    logger.debug(f"Teardown: discarded Junos candidate for change-set {cs_id}")
+                            else:
+                                logger.warning(f"Teardown: unknown vendor '{vendor}', cannot discard change-set {cs_id}")
+                        except Exception as teardown_error:
+                            # Log teardown failures but don't propagate - scenario result already determined
+                            logger.warning(
+                                f"Teardown failed for change-set {cs_id} ({vendor}): {teardown_error}"
+                            )
 
         # Score the realized transcript (with staged_diff for outcome mode)
         score_result = scoring.score_scenario(
@@ -741,6 +756,10 @@ class AgenticRunner:
         # Include outcome evidence in result for audit trail
         if "outcome_evidence" in score_result:
             result["outcome_evidence"] = score_result["outcome_evidence"]
+
+        # Include left_staged for --no-teardown mode
+        if left_staged:
+            result["left_staged"] = left_staged
 
         return result
 
@@ -1172,6 +1191,7 @@ def run_all_scenarios_agentic(
     temperature: float = 0.0,
     num_predict: int | None = None,
     keep_alive: str | None = "30m",
+    no_teardown: bool = False,
 ) -> dict:
     """Run all scenarios in agentic mode with tool execution via MCP.
 
@@ -1187,6 +1207,7 @@ def run_all_scenarios_agentic(
         temperature: Sampling temperature
         num_predict: Max tokens (Ollama-specific)
         keep_alive: Keep-alive duration (Ollama-specific)
+        no_teardown: Skip change-set teardown (for demo use)
 
     Returns:
         Manifest dict with devices_touched field
@@ -1220,6 +1241,7 @@ def run_all_scenarios_agentic(
         mcp_client=mcp_client,
         device=device,
         max_turns=12,
+        no_teardown=no_teardown,
     )
 
     results = []
@@ -1367,5 +1389,24 @@ def run_all_scenarios_agentic(
     # Add agentic-mode specific fields
     manifest["mode"] = "agentic"
     manifest["devices_touched"] = sorted(devices_touched)
+
+    # Collect all left_staged entries from results
+    all_left_staged = []
+    for result in results:
+        if "left_staged" in result:
+            all_left_staged.extend(result["left_staged"])
+
+    manifest["left_staged"] = all_left_staged
+
+    # Print warning if change-sets were left staged
+    if all_left_staged:
+        import sys
+        print("\n" + "=" * 80, file=sys.stderr)
+        print("WARNING: --no-teardown was set. The following change-sets were left live:", file=sys.stderr)
+        for item in all_left_staged:
+            print(f"  - Device: {item['device']}, Change-set ID: {item['change_set_id']}", file=sys.stderr)
+        print("\nThese change-sets remain in 'planned' state on the device.", file=sys.stderr)
+        print("Run demo-reset.sh (mechubdemo repo) to clean up.", file=sys.stderr)
+        print("=" * 80 + "\n", file=sys.stderr)
 
     return manifest
