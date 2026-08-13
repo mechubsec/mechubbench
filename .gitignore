@@ -46,3 +46,9 @@ manifests/
 *.manifest.json
 .venv/
 .env.token
+# Any credential file, not just the one that happened to exist first.
+# .env.setup-token sat untracked-but-not-ignored for weeks; a `git add -A`
+# would have committed a live MCP bearer token.
+.env.*-token
+.env.token.*
+*.token

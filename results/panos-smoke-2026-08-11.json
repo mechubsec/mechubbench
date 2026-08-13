@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "run_id": "928deac2-0f86-410e-9a29-6bb1188fc7cd",
+  "model": "ornith:35b",
+  "corpus_git_sha": "da6a9b31596d73ec74689e3e5c3e24206ad72ec8",
+  "started": "2026-08-11T21:56:34.326653+00:00",
+  "finished": "2026-08-11T21:56:44.089374+00:00",
+  "results": [
+    {
+      "id": "discover-panos-system-info",
+      "pass": false,
+      "reason": "missing expected calls: ['get_panos_config']",
+      "started": "2026-08-11T21:56:34.381663+00:00",
+      "finished": "2026-08-11T21:56:44.089322+00:00",
+      "transcript": [
+        {
+          "tool": "gather_device_facts",
+          "args": {
+            "device": "panosvm"
+          }
+        }
+      ]
+    }
+  ],
+  "mode": "agentic",
+  "devices_touched": [
+    "panosvm"
+  ]
+}
