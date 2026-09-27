@@ -39,7 +39,7 @@ class MCPClient:
         """Initialize MCP client and establish session.
 
         Args:
-            endpoint: MCP endpoint URL (e.g. http://198.51.100.194:30031/mcp)
+            endpoint: MCP endpoint URL (e.g. http://198.51.100.10:30031/mcp)
             token: Bearer token for authentication
             timeout: Request timeout in seconds
 
@@ -771,7 +771,7 @@ class OllamaHealthProbe:
         """Initialize health probe.
 
         Args:
-            base_url: Ollama base URL (e.g. http://inference.example.com:11434)
+            base_url: Ollama base URL (e.g. http://mcp-infer.example.net:11434)
         """
         self.base_url = base_url.rstrip("/")
 
