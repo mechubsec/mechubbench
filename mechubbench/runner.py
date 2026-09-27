@@ -771,7 +771,7 @@ class OllamaHealthProbe:
         """Initialize health probe.
 
         Args:
-            base_url: Ollama base URL (e.g. http://inference.example.com:11434)
+            base_url: Ollama base URL (e.g. http://127.0.0.1:11434)
         """
         self.base_url = base_url.rstrip("/")
 

@@ -1,8 +1,10 @@
 """Tests for CLI commands."""
 
+import json
 from pathlib import Path
+from unittest.mock import patch
 
-from mechubbench.cli import cmd_lint
+from mechubbench.cli import build_parser, cmd_lint, cmd_run
 
 
 def test_lint_valid_scenario_passes(tmp_path):
