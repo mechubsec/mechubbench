@@ -11,7 +11,7 @@ from pathlib import Path
 
 import jsonschema
 
-from . import core, runner
+from . import core, redact, runner
 
 logger = logging.getLogger(__name__)
 
@@ -206,9 +206,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             scenarios, args.model, tools, args.endpoint, args.temperature
         )
 
-    # Write manifest
+    # Write manifest (redacted: model tool arguments are saved verbatim
+    # in-memory for scoring, but secret-shaped values never reach disk)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(manifest, indent=2))
+    redacted_manifest = redact.redact_manifest(manifest)
+    output_path.write_text(json.dumps(redacted_manifest, indent=2))
     logger.info(f"Manifest written to {output_path}")
 
     # Summary
