@@ -1398,6 +1398,327 @@ class TestAgenticRunner:
         assert "left_staged" in result_true
 
 
+class TestDevicePinning:
+    """MEC-27 M5: the model chooses tools, never the target device."""
+
+    def test_spoofed_device_arg_is_pinned_to_assigned_device(self):
+        """Model asks for a different device than the one it was assigned;
+        the dispatched call must go to the assigned device regardless."""
+        scenario = {
+            "id": "test-pin",
+            "vendor": "junos",
+            "prompt": "Check the config",
+            "expected_calls": [{"tool": "get_junos_config"}],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        tools = [
+            {
+                "name": "get_junos_config",
+                "description": "Get Junos configuration",
+                "parameters": {"type": "object", "properties": {"device": {"type": "string"}}},
+            }
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "get_junos_config",
+                                # Model asks for a device it was never assigned.
+                                "arguments": '{"device": "prod-core-fw1"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            }
+        ]
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.return_value = {"config": "set system host-name test"}
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="vsrx-ci",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        # The real dispatch must have used the assigned device, never the
+        # model-requested one.
+        mock_mcp.call_tool.assert_called_once_with(
+            "get_junos_config", {"device": "vsrx-ci"}
+        )
+
+        # The spoofing attempt is recorded in the transcript for audit.
+        assert result["transcript"][0]["args"]["device"] == "vsrx-ci"
+        assert result["transcript"][0]["device_pinned_from"] == {"device": "prod-core-fw1"}
+
+        # devices_touched reflects the real dispatch, not the model's request.
+        assert result["devices_touched"] == ["vsrx-ci"]
+
+    def test_matching_device_arg_is_not_flagged(self):
+        """Model requests the device it was actually assigned: no pin marker."""
+        scenario = {
+            "id": "test-no-pin",
+            "vendor": "junos",
+            "prompt": "Check the config",
+            "expected_calls": [{"tool": "get_junos_config"}],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        tools = [
+            {
+                "name": "get_junos_config",
+                "description": "Get Junos configuration",
+                "parameters": {"type": "object", "properties": {"device": {"type": "string"}}},
+            }
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "get_junos_config",
+                                "arguments": '{"device": "vsrx-ci"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            }
+        ]
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.return_value = {"config": "set system host-name test"}
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="vsrx-ci",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        assert "device_pinned_from" not in result["transcript"][0]
+        assert result["devices_touched"] == ["vsrx-ci"]
+
+    def test_alias_device_keys_also_pinned(self):
+        """router / router_name aliases are pinned too, not just 'device'."""
+        scenario = {
+            "id": "test-alias-pin",
+            "vendor": "junos",
+            "prompt": "Check the config",
+            "expected_calls": [{"tool": "get_junos_config"}],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        tools = [
+            {
+                "name": "get_junos_config",
+                "description": "Get Junos configuration",
+                "parameters": {"type": "object", "properties": {"router_name": {"type": "string"}}},
+            }
+        ]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "get_junos_config",
+                                "arguments": '{"router_name": "prod-core-fw1"}'
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {
+                "choices": [{
+                    "message": {"content": "Done"},
+                    "finish_reason": "stop"
+                }]
+            }
+        ]
+
+        mock_mcp = Mock()
+        mock_mcp.call_tool.return_value = {"config": "set system host-name test"}
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="vsrx-ci",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+
+        mock_mcp.call_tool.assert_called_once_with(
+            "get_junos_config", {"router_name": "vsrx-ci"}
+        )
+        assert result["transcript"][0]["device_pinned_from"] == {"router_name": "prod-core-fw1"}
+
+    def test_devices_touched_empty_when_no_tool_calls_dispatched(self):
+        """A scenario where the model never calls a tool touches no device."""
+        scenario = {
+            "id": "test-no-calls",
+            "vendor": "junos",
+            "prompt": "Just answer",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "outcome_lenient",
+        }
+        tools = []
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.return_value = {
+            "choices": [{
+                "message": {"content": "No action needed"},
+                "finish_reason": "stop"
+            }]
+        }
+
+        mock_mcp = Mock()
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="vsrx-ci",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+        assert result["devices_touched"] == []
+
+    def test_devices_touched_not_updated_for_blocked_forbidden_tool(self):
+        """A blocked (never-dispatched) forbidden call does not count as touching a device."""
+        scenario = {
+            "id": "test-blocked",
+            "vendor": "panos",
+            "prompt": "Try to commit",
+            "expected_calls": [],
+            "forbidden_calls": [{"tool": "commit_panos_candidate"}],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        tools = [{"name": "commit_panos_candidate", "description": "Commit", "parameters": {"type": "object"}}]
+
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {"name": "commit_panos_candidate", "arguments": '{"device": "vsrx-ci"}'}
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }]
+            },
+            {
+                "choices": [{"message": {"content": "Stopped"}, "finish_reason": "stop"}]
+            }
+        ]
+        mock_mcp = Mock()
+
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm,
+            mcp_client=mock_mcp,
+            device="vsrx-ci",
+            max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+        mock_mcp.call_tool.assert_not_called()
+        assert result["devices_touched"] == []
+
+
+class TestRunAllScenariosAgenticDevicesTouched:
+    """MEC-27 M5: devices_touched at the manifest level reflects real dispatches."""
+
+    def test_devices_touched_derived_from_dispatched_calls(self):
+        scenario = {
+            "id": "test-agg",
+            "vendor": "junos",
+            "prompt": "Check the config",
+            "expected_calls": [{"tool": "get_junos_config"}],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        tools = [
+            {
+                "name": "get_junos_config",
+                "description": "Get Junos configuration",
+                "parameters": {"type": "object", "properties": {"device": {"type": "string"}}},
+            }
+        ]
+
+        with patch("mechubbench.runner.LLMClient") as MockLLMClient, \
+             patch("mechubbench.runner.MCPClient") as MockMCPClient:
+            mock_llm = MockLLMClient.return_value
+            mock_llm.complete_with_tools.side_effect = [
+                {
+                    "choices": [{
+                        "message": {
+                            "tool_calls": [{
+                                "type": "function",
+                                "function": {
+                                    "name": "get_junos_config",
+                                    # Spoofed device: must not appear in devices_touched.
+                                    "arguments": '{"device": "prod-core-fw1"}'
+                                }
+                            }]
+                        },
+                        "finish_reason": "tool_calls"
+                    }]
+                },
+                {"choices": [{"message": {"content": "Done"}, "finish_reason": "stop"}]},
+            ]
+            mock_mcp = MockMCPClient.return_value
+            mock_mcp.call_tool.return_value = {"config": "set system host-name test"}
+
+            manifest = runner.run_all_scenarios_agentic(
+                scenarios=[scenario],
+                model="test-model",
+                tools=tools,
+                endpoint="http://127.0.0.1:11434/v1",
+                mcp_endpoint="http://127.0.0.1:9999/mcp",
+                mcp_token="test-token",
+                device="vsrx-ci",
+            )
+
+        assert manifest["devices_touched"] == ["vsrx-ci"]
+        assert "prod-core-fw1" not in manifest["devices_touched"]
+
+
 class TestDeviceTemplateSubstitution:
     """Test {{device}} template substitution in scenarios."""
 

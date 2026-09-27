@@ -18,6 +18,12 @@ from . import core, scoring
 
 logger = logging.getLogger(__name__)
 
+# Tool argument keys that identify a target device. The model must never
+# choose the device a tool call actually reaches — these are always pinned
+# to the assigned device before dispatch, regardless of what the model asks
+# for (see AgenticRunner.run_scenario).
+DEVICE_ARG_KEYS = ("device", "router", "router_name")
+
 
 class MCPError(Exception):
     """MCP protocol or tool execution error."""
@@ -449,6 +455,7 @@ class AgenticRunner:
         staged_payloads = []  # Staged content from accepted create calls (for outcome capture)
         vendor = scenario.get("vendor", "unknown")
         final_message = None  # Track model's final text response
+        devices_touched: set[str] = set()  # Devices actually dispatched to
 
         # Substitute {{device}} placeholder in prompt
         prompt = scenario["prompt"]
@@ -501,10 +508,27 @@ class AgenticRunner:
                 # Execute each tool call and collect results
                 for call in tool_calls:
                     tool_name = call["tool"]
-                    tool_args = call["args"]
+                    tool_args = dict(call["args"])
+
+                    # Safety rail: the model chooses tools, never the target
+                    # device. Pin every device-identifying argument to the
+                    # assigned device before dispatch, no matter what value
+                    # (or alias key) the model supplied.
+                    device_pinned_from = {}
+                    for key in DEVICE_ARG_KEYS:
+                        if key in tool_args and tool_args[key] != self.device:
+                            device_pinned_from[key] = tool_args[key]
+                        if key in tool_args:
+                            tool_args[key] = self.device
 
                     # Start transcript entry
                     transcript_entry = {"tool": tool_name, "args": tool_args}
+                    if device_pinned_from:
+                        transcript_entry["device_pinned_from"] = device_pinned_from
+                        logger.warning(
+                            f"Pinned device argument(s) for {tool_name}: "
+                            f"model requested {device_pinned_from}, using {self.device}"
+                        )
                     tool_error = None
 
                     # Safety rail: never execute forbidden tools
@@ -515,7 +539,8 @@ class AgenticRunner:
                         }
                         tool_error = f"forbidden: {tool_name}"
                     else:
-                        # Execute via MCP
+                        # Execute via MCP (device already pinned above)
+                        devices_touched.add(self.device)
                         try:
                             tool_result = self.mcp_client.call_tool(tool_name, tool_args)
                         except MCPError as e:
@@ -602,6 +627,7 @@ class AgenticRunner:
                     "finished": finished,
                     "transcript": transcript,
                     "final_message": final_message,
+                    "devices_touched": sorted(devices_touched),
                 }
 
         except Exception as e:
@@ -616,6 +642,7 @@ class AgenticRunner:
                 "finished": finished,
                 "transcript": transcript,
                 "final_message": final_message,
+                "devices_touched": sorted(devices_touched),
             }
         finally:
             # OUTCOME SCORING: Capture staged state BEFORE teardown
@@ -751,6 +778,7 @@ class AgenticRunner:
             "finished": finished,
             "transcript": transcript,
             "final_message": final_message,
+            "devices_touched": sorted(devices_touched),
         }
 
         # Include outcome evidence in result for audit trail
@@ -1245,7 +1273,7 @@ def run_all_scenarios_agentic(
     )
 
     results = []
-    devices_touched = {device}  # Track devices used
+    devices_touched: set[str] = set()  # Populated from actual dispatched calls below
 
     for i, scenario in enumerate(scenarios):
         logger.info(f"Running scenario {i+1}/{len(scenarios)}: {scenario['id']}")
@@ -1314,6 +1342,7 @@ def run_all_scenarios_agentic(
             # Run scenario
             result = agentic_runner.run_scenario(scenario, model, tools, temperature)
             results.append(result)
+            devices_touched.update(result.get("devices_touched", []))
 
             status = "PASS" if result["pass"] else "FAIL"
             logger.info(f"  Result: {status} - {result['reason']}")
