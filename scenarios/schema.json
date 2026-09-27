@@ -86,6 +86,13 @@
             "type": "string"
           }
         },
+        "staged_diff_must_not_contain": {
+          "type": "array",
+          "description": "Substrings that must NOT appear in staged diff (e.g. out-of-scope config that must not leak)",
+          "items": {
+            "type": "string"
+          }
+        },
         "must_not_commit": {
           "type": "boolean",
           "description": "Forbidden call enforcement (default true)"

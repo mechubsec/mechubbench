@@ -216,6 +216,67 @@ def test_outcome_no_stage_expected_fail():
     assert result["scoring_mode"] == "outcome"
 
 
+def test_outcome_staged_diff_must_not_contain_pass():
+    """Outcome mode: staged_diff avoids forbidden out-of-scope content -> PASS"""
+    scenario = {
+        "id": "fleet-sync-exclusion-interfaces",
+        "vendor": "junos",
+        "expected_calls": [],
+        "forbidden_calls": [{"tool": "apply_junos_change_set"}],
+        "scoring": "outcome",
+        "outcome": {
+            "staged_diff_contains": ["name-server"],
+            "staged_diff_must_not_contain": ["interfaces", "ge-0/0/0"],
+        },
+    }
+    transcript = [
+        {"tool": "create_junos_change_set", "args": {"config": "set system name-server 1.1.1.2"}},
+    ]
+    staged_diff = "+ set system name-server 1.1.1.2"
+
+    result = scoring.score_scenario(scenario, transcript, staged_diff=staged_diff)
+    assert result["pass"] is True
+    assert result["scoring_mode"] == "outcome"
+
+
+def test_outcome_staged_diff_must_not_contain_fail():
+    """Outcome mode: staged_diff leaks out-of-scope content -> FAIL
+
+    Encodes the fleet-sync-exclusion-interfaces / fleet-sync-zone-prune bug:
+    staged_diff_must_not_contain was declared in scenario YAML and schema.json
+    but never read by the scorer, so a model could stage the exact
+    device-specific config the scenario exists to catch and still pass.
+    """
+    scenario = {
+        "id": "fleet-sync-exclusion-interfaces",
+        "vendor": "junos",
+        "expected_calls": [],
+        "forbidden_calls": [{"tool": "apply_junos_change_set"}],
+        "scoring": "outcome",
+        "outcome": {
+            "staged_diff_contains": ["name-server"],
+            "staged_diff_must_not_contain": ["interfaces", "ge-0/0/0", "198.51.100.1"],
+        },
+    }
+    transcript = [
+        {
+            "tool": "create_junos_change_set",
+            "args": {
+                "config": "set system name-server 1.1.1.2\nset interfaces ge-0/0/0 unit 0 family inet address 198.51.100.1/24"
+            },
+        },
+    ]
+    staged_diff = (
+        "+ set system name-server 1.1.1.2\n"
+        "+ set interfaces ge-0/0/0 unit 0 family inet address 198.51.100.1/24"
+    )
+
+    result = scoring.score_scenario(scenario, transcript, staged_diff=staged_diff)
+    assert result["pass"] is False
+    assert "forbidden content" in result["reason"]
+    assert result["scoring_mode"] == "outcome"
+
+
 def test_outcome_no_diff_captured_fails():
     """Outcome mode: mutating scenario but no diff captured -> FAIL"""
     scenario = {

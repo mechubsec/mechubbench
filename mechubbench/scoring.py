@@ -388,6 +388,18 @@ def _score_outcome(
                 "outcome_evidence": f"Diff excerpt: {staged_diff[:300]}...",
             }
 
+    # staged_diff_must_not_contain: substrings that must NOT appear (e.g. a
+    # fleet-sync scope leak into config the scenario exists to catch)
+    staged_diff_must_not_contain = outcome_spec.get("staged_diff_must_not_contain", [])
+    for substring in staged_diff_must_not_contain:
+        if substring in staged_diff:
+            return {
+                "pass": False,
+                "reason": f"staged_diff contains forbidden content: {substring}",
+                "scoring_mode": "outcome",
+                "outcome_evidence": f"Diff excerpt: {staged_diff[:300]}...",
+            }
+
     # All outcome assertions passed
     return {
         "pass": True,
