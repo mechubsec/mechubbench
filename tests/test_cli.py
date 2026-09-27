@@ -97,3 +97,150 @@ scoring: all_expected_present_and_ordered_no_forbidden
 
     result = cmd_lint(Args())
     assert result == 1
+
+
+class TestNoFlagsStaysOnLoopback:
+    """MEC-27 M3: with no flags, no request leaves loopback."""
+
+    def test_run_endpoint_defaults_to_loopback(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["run", "--model", "test-model", "--scenarios", "scenarios", "--out", "/tmp/out.json"]
+        )
+        assert args.endpoint == "http://127.0.0.1:11434/v1"
+
+    def test_run_endpoint_default_is_not_a_remote_host(self):
+        from urllib.parse import urlparse
+
+        parser = build_parser()
+        args = parser.parse_args(
+            ["run", "--model", "test-model", "--scenarios", "scenarios", "--out", "/tmp/out.json"]
+        )
+        assert urlparse(args.endpoint).hostname in ("127.0.0.1", "localhost")
+
+
+class TestTokensFromFileOrEnvOnly:
+    """MEC-27 Low: tokens are accepted from a file or the environment, never a bare CLI value."""
+
+    def test_mcp_token_file_flag_replaces_bare_token_flag(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            [
+                "run",
+                "--model",
+                "test-model",
+                "--scenarios",
+                "scenarios",
+                "--out",
+                "/tmp/out.json",
+                "--mcp-token-file",
+                "/tmp/token-file",
+            ]
+        )
+        assert args.mcp_token_file == "/tmp/token-file"
+        assert not hasattr(args, "mcp_token")
+
+    def test_bare_mcp_token_flag_is_rejected(self):
+        """--mcp-token no longer exists; allow_abbrev=False stops it silently
+        prefix-matching --mcp-token-file."""
+        import pytest
+
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(
+                [
+                    "run",
+                    "--model",
+                    "test-model",
+                    "--scenarios",
+                    "scenarios",
+                    "--out",
+                    "/tmp/out.json",
+                    "--mcp-token",
+                    "leaked-on-the-command-line",
+                ]
+            )
+
+
+class TestResultFileRedaction:
+    """MEC-27 M4: a result file written from a synthetic run has secret shapes redacted."""
+
+    def test_written_manifest_has_secrets_redacted(self, tmp_path):
+        scenarios_dir = tmp_path / "scenarios"
+        scenarios_dir.mkdir()
+        (scenarios_dir / "test.yaml").write_text("""
+id: test-secret
+vendor: junos
+setup: "set system host-name test"
+prompt: "Check config"
+expected_calls:
+  - tool: get_junos_config
+forbidden_calls:
+  - tool: apply_junos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden
+""")
+        tools_path = tmp_path / "tools.json"
+        tools_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "name": "get_junos_config",
+                        "description": "Get config",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"device": {"type": "string"}},
+                        },
+                    }
+                ]
+            )
+        )
+        out_path = tmp_path / "results" / "synthetic.json"
+
+        secret_manifest = {
+            "schema_version": 1,
+            "run_id": "synthetic",
+            "model": "test-model",
+            "results": [
+                {
+                    "id": "test-secret",
+                    "pass": True,
+                    "reason": "ok",
+                    "transcript": [
+                        {
+                            "tool": "get_junos_config",
+                            "args": {
+                                "device": "vsrx-ci",
+                                "text": (
+                                    'encrypted-password "$6$FAKEsalt$FAKEhashdata12345"; '
+                                    'secret "FAKEradiussecret"; '
+                                    'community "FAKEcommunitystring"; '
+                                    "host 192.168.5.9;"
+                                ),
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+
+        class Args:
+            scenarios = str(scenarios_dir)
+            tools = str(tools_path)
+            out = str(out_path)
+            mode = "blind"
+            endpoint = "http://127.0.0.1:11434/v1"
+            temperature = 0.0
+            model = "test-model"
+
+        with patch("mechubbench.runner.run_all_scenarios", return_value=secret_manifest):
+            result = cmd_run(Args())
+
+        assert result == 0
+        written_blob = out_path.read_text()
+        for secret_shape in [
+            "$6$FAKEsalt$FAKEhashdata12345",
+            "FAKEradiussecret",
+            "FAKEcommunitystring",
+            "192.168.5.9",
+        ]:
+            assert secret_shape not in written_blob, f"{secret_shape!r} leaked into results/*.json"
