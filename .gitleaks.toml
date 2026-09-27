@@ -1,0 +1,45 @@
+title = "mechubbench gitleaks config"
+
+[extend]
+useDefault = true
+
+# Vendor-specific secret shapes the default gitleaks ruleset does not cover.
+# These are the same shapes mechubbench.redact scrubs from results/*.json:
+# Junos crypt hashes, SSH keys, and vendor pre-shared/community secrets.
+[[rules]]
+id = "junos-type9-secret"
+description = "Junos $9$ (family 9) obfuscated secret"
+regex = '''\$9\$[^\s"'\\]{4,}'''
+tags = ["junos", "secret"]
+
+[[rules]]
+id = "junos-crypt-secret"
+description = "Junos $1$/$5$/$6$ crypt secret"
+regex = '''\$[156]\$(rounds=\d+\$)?[A-Za-z0-9./]{1,16}\$[A-Za-z0-9./]{20,}'''
+tags = ["junos", "secret"]
+
+[[rules]]
+id = "ssh-public-or-private-key-material"
+description = "Embedded SSH public key material (config authentication blocks)"
+regex = '''ssh-(?:rsa|dss|ed25519|ecdsa-[\w-]+)\s+([A-Za-z0-9+/=]{20,})'''
+secretGroup = 1
+tags = ["ssh", "secret"]
+
+[[rules]]
+id = "vendor-keyword-anchored-secret"
+description = "Value following a known secret-carrying config keyword (pre-shared-key, authentication-key, community, device-id)"
+regex = '''(?i)\b(pre-shared-key|authentication-key|community|device-id)\b\s+("(?:[^"\\]|\\.)*"|\S+)'''
+secretGroup = 2
+tags = ["vendor", "secret"]
+
+# The rule regexes above are literal strings that match themselves, and this
+# file documents secret shapes with fabricated examples in commit messages
+# and tests. Without this, the repo's own config/test fixtures would flag.
+[allowlist]
+description = "This repo's own gitleaks config, and fabricated FAKE-prefixed test fixtures, must not self-flag"
+paths = [
+  '''(^|/)\.gitleaks\.toml$''',
+]
+regexes = [
+  '''(?i)FAKE''',
+]

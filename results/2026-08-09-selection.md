@@ -68,7 +68,7 @@
 
 ## Evaluation Environment
 
-- **Serving:** Ollama 0.32.1 at `http://inference.example.com:11434/v1`
+- **Serving:** Ollama 0.32.1 at the bench inference endpoint (host redacted)
 - **Temperature:** 0.0 (deterministic)
 - **Tool Schema:** 11 tools (6 Junos + 5 PAN-OS) from `tools/combined-tools.json`
 - **Corpus:** 20 scenarios across discovery, healing, failure-detection, standardization, and tightening tasks
