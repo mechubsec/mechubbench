@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import re
 
 REDACTED = "[REDACTED]"
@@ -67,6 +68,18 @@ def _normalize_key(key: str) -> str:
 
 _SECRET_KEY_NAMES = frozenset(_normalize_key(k) for k in _SECRET_KEYWORDS)
 
+# Segment form of each keyword (e.g. "pre-shared-key" -> ["pre", "shared",
+# "key"]), used to match a keyword appearing as a contiguous run within a
+# compound dict key ("x-api-key", "admin_password", "snmp-community") that
+# _normalize_key's whole-string comparison above misses.
+_SECRET_KEYWORD_SEGMENTS = tuple(k.lower().split("-") for k in _SECRET_KEYWORDS)
+
+
+def _key_segments(key: str) -> list[str]:
+    """Split a key into lowercase segments on `-`, `_`, and camelCase bounds."""
+    key = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
+    return [seg.lower() for seg in re.split(r"[-_]", key) if seg]
+
 
 def _keyword_to_pattern(keyword: str) -> str:
     """Build a regex fragment matching `keyword` with `-` or `_` word separators."""
@@ -83,12 +96,23 @@ def _keyword_to_pattern(keyword: str) -> str:
 # secret itself - not just the format tag - gets redacted.
 _SECRET_KEYWORD_ALT = "|".join(_keyword_to_pattern(k) for k in _SECRET_KEYWORDS)
 _SECRET_KEYWORD_RE = re.compile(
-    r'(?i)(?P<key>"?\b(?:' + _SECRET_KEYWORD_ALT + r')\b"?)'
+    r'(?i)(?P<key>"?(?<![A-Za-z0-9])(?:' + _SECRET_KEYWORD_ALT + r')\b"?)'
     r"(?P<sep>\s*[:=]\s*|\s+)"
     r"(?:(?:ascii-text|hexadecimal)\s+)?"
     r'(?P<val>"(?:[^"\\]|\\.)*"'
     r"|'(?:[^'\\]|\\.)*'"
-    r'|[^\s"\']+)'
+    r"|(?![\[{])[^\s\"']+)"
+)
+
+# OSPF plaintext MD5 authentication key, e.g. vendor CLI's
+# `authentication md5 <id> key <value>` syntax. The bare word `key` is not
+# itself a secret-carrying keyword (too common a false-positive source), so
+# this only fires in that specific `md5 <id> key` sequence.
+_OSPF_MD5_KEY_RE = re.compile(
+    r'(?i)(?P<key>\bmd5\s+\d+\s+key)(?P<sep>\s+)'
+    r'(?P<val>"(?:[^"\\]|\\.)*"'
+    r"|'(?:[^'\\]|\\.)*'"
+    r"|[^\s\"']+)"
 )
 
 # PAN-OS's own obfuscation format for secrets (pre-shared keys, TOTP seeds,
@@ -119,6 +143,15 @@ _CONFIG_DIGEST_MIN_LINES = 5
 
 
 def _redact_text(text: str) -> str:
+    stripped = text.lstrip()
+    if stripped[:1] in "{[":
+        try:
+            parsed = json.loads(stripped)
+        except ValueError:
+            pass
+        else:
+            return json.dumps(_redact_obj(parsed))
+
     text = _CRYPT_HASH_RE.sub(REDACTED, text)
     text = _SSH_KEY_RE.sub(REDACTED, text)
     text = _XML_SECRET_ELEMENT_RE.sub(
@@ -128,6 +161,9 @@ def _redact_text(text: str) -> str:
     text = _RFC1918_RE.sub(REDACTED_IP, text)
     text = _AUTH_SCHEME_TOKEN_RE.sub(lambda m: f"{m.group(1)} {REDACTED}", text)
     text = _SECRET_KEYWORD_RE.sub(
+        lambda m: f"{m.group('key')}{m.group('sep')}{REDACTED}", text
+    )
+    text = _OSPF_MD5_KEY_RE.sub(
         lambda m: f"{m.group('key')}{m.group('sep')}{REDACTED}", text
     )
 
@@ -143,7 +179,17 @@ def _redact_text(text: str) -> str:
 
 
 def _is_secret_key(key: str) -> bool:
-    return _normalize_key(key) in _SECRET_KEY_NAMES
+    if _normalize_key(key) in _SECRET_KEY_NAMES:
+        return True
+    segments = _key_segments(key)
+    for kw_segs in _SECRET_KEYWORD_SEGMENTS:
+        n = len(kw_segs)
+        if n > len(segments):
+            continue
+        for i in range(len(segments) - n + 1):
+            if segments[i : i + n] == kw_segs:
+                return True
+    return False
 
 
 def _redact_obj(obj, key: str | None = None):

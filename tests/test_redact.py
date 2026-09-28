@@ -295,6 +295,82 @@ def test_redact_manifest_walks_nested_structures_and_does_not_mutate_input():
     assert "FAKEcommunity789" not in redacted_text
 
 
+def test_dict_key_compound_secret_variants_redacted():
+    """V1: the dict path compared the whole normalized key against the
+    keyword set, so a compound key (keyword plus an extra prefix/suffix
+    segment) survived even though the equivalent bare keyword didn't."""
+    for key in (
+        "x-api-key",
+        "simple-password",
+        "privacy-password",
+        "snmp-community",
+        "admin_password",
+        "access_token",
+        "secret_key",
+        "accessToken",
+    ):
+        obj = {key: "FAKEcompoundvalue"}
+        result = redact._redact_obj(obj)
+        assert result == {key: redact.REDACTED}, f"key {key!r} was not redacted"
+
+
+def test_text_underscore_prefixed_keyword_redacted():
+    """V1: a leading `\\b` failed to match a keyword immediately after an
+    underscore (both are word characters, so there's no boundary), leaving
+    `admin_password=...` and `access_token=...` untouched in text scanning."""
+    for text, secret in (
+        ("admin_password=FAKEadminpass", "FAKEadminpass"),
+        ("access_token=FAKEaccesstok", "FAKEaccesstok"),
+    ):
+        result = redact._redact_text(text)
+        assert secret not in result, f"{text!r} leaked {secret!r}"
+
+
+def test_json_rendered_list_config_nested_secret_redacted():
+    """V2: the keyword regex took the `{`/`[` right after the keyword as the
+    value, leaving the real secret nested one level down (e.g. Junos
+    `| display json` output for an SNMP community, list form) untouched."""
+    text = '{"community": [{"name": "FAKEcommlistname", "authorization": "read-only"}]}'
+    result = redact._redact_text(text)
+    assert "FAKEcommlistname" not in result
+
+
+def test_json_rendered_nested_dict_secret_redacted():
+    """V2: same gap, nested dict form (Junos `pre-shared-key` rendered as
+    `{"ascii-text": "..."}` under `| display json`)."""
+    text = '{"pre-shared-key": {"ascii-text": "FAKEplainpsk"}}'
+    result = redact._redact_text(text)
+    assert "FAKEplainpsk" not in result
+
+
+def test_json_rendered_config_pretty_printed_nested_secret_redacted():
+    """V2: the JSON detour must also handle pretty-printed (multi-line,
+    indented) JSON, not just compact single-line JSON."""
+    text = (
+        "{\n"
+        '  "community": [\n'
+        "    {\n"
+        '      "name": "FAKEprettycommname"\n'
+        "    }\n"
+        "  ]\n"
+        "}"
+    )
+    result = redact._redact_text(text)
+    assert "FAKEprettycommname" not in result
+
+
+def test_ospf_md5_plaintext_key_redacted():
+    """V3: `key` alone is not a secret-carrying keyword (too common a false
+    positive source), so the OSPF MD5 authentication key line passed through
+    unchanged."""
+    text = (
+        "set protocols ospf area 0 interface ge-0/0/0 "
+        "authentication md5 1 key FAKEmd5key"
+    )
+    result = redact._redact_text(text)
+    assert "FAKEmd5key" not in result
+
+
 def test_redact_manifest_from_synthetic_run_with_secret_shapes():
     """A result file written from a synthetic run has secret shapes redacted.
 

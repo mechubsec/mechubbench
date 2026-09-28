@@ -38,6 +38,13 @@ description = "PAN-OS '-AQ==' obfuscated secret (pre-shared keys, TOTP seeds, et
 regex = '''-AQ==[A-Za-z0-9+/=]{8,}'''
 tags = ["panos", "secret"]
 
+[[rules]]
+id = "ospf-md5-plaintext-key"
+description = "OSPF plaintext MD5 authentication key (`authentication md5 <id> key <secret>`); the bare word `key` alone is too common a false-positive source to flag on its own"
+regex = '''(?i)\bmd5\s+\d+\s+key\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']+)'''
+secretGroup = 1
+tags = ["vendor", "secret"]
+
 # The two rules below are scoped to results/*.json only. They are a backstop
 # for mechubbench.redact, not a replacement for the vendor-shape rules above:
 # a gap in redact.py's own logic (see MEC-226) should still be caught here
@@ -51,8 +58,9 @@ tags = ["pem", "secret", "results"]
 
 [[rules]]
 id = "sensitive-keyword-in-results"
-description = "JSON key:value pair using a sensitive keyword (password/token/api-key/etc.), scoped to results/ so it still catches what mechubbench.redact misses. Requires a `:`/`=` separator (not just whitespace) so ordinary prose containing these words in an error message doesn't self-flag."
-regex = '''(?i)"?\b(password|passphrase|token|api[-_]key|private[-_]key|client[-_]secret|psk|pre[-_]shared[-_]key|secret)\b"?\s*[:=]\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']{4,})'''
+description = "JSON key:value pair using a sensitive keyword (password/token/api-key/etc.), scoped to results/ so it still catches what mechubbench.redact misses. Requires a `:`/`=` separator (not just whitespace) so ordinary prose containing these words in an error message doesn't self-flag. Go's RE2 engine has no lookbehind, so the leading boundary is `(?:^|[^A-Za-z0-9])` rather than Python's `(?<![A-Za-z0-9])`; it still matches a keyword directly after a `_`, e.g. `admin_password`, since `_` and the keyword are both word characters and share no `\\b` boundary."
+regex = '''(?i)(?:^|[^A-Za-z0-9])"?(password|passphrase|token|api[-_]key|private[-_]key|client[-_]secret|psk|pre[-_]shared[-_]key|secret)\b"?\s*[:=]\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']{4,})'''
+secretGroup = 2
 path = '''results/.*\.json$'''
 tags = ["vendor", "secret", "results"]
 
