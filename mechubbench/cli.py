@@ -90,6 +90,13 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Check mode
     if args.mode == "agentic":
+        if not args.mcp_endpoint:
+            logger.error(
+                "Agentic mode requires --mcp-endpoint (no default: an unset "
+                "lab endpoint must never be baked into the tool)"
+            )
+            return 1
+
         # Get MCP token from a file or environment (AGENT token - commitless)
         try:
             mcp_token = _read_token(args.mcp_token_file, "RUSTJUNOSMCP_TOKEN")
@@ -423,8 +430,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--mcp-endpoint",
-        default="http://198.51.100.194:30031/mcp",
-        help="MCP endpoint URL for agentic mode (default: http://198.51.100.194:30031/mcp)",
+        default=None,
+        help="MCP endpoint URL, required when --mode agentic (e.g. "
+        "http://127.0.0.1:30031/mcp). No default: an unset lab endpoint "
+        "must never be baked into the tool.",
     )
     run_parser.add_argument(
         "--mcp-token-file",
@@ -467,7 +476,7 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument(
         "--mcp-endpoint",
         required=True,
-        help="MCP endpoint URL (e.g., http://198.51.100.194:30031/mcp)",
+        help="MCP endpoint URL (e.g., http://127.0.0.1:30031/mcp)",
     )
     export_parser.add_argument(
         "--mcp-token-file",

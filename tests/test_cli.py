@@ -119,6 +119,65 @@ class TestNoFlagsStaysOnLoopback:
         assert urlparse(args.endpoint).hostname in ("127.0.0.1", "localhost")
 
 
+class TestMCPEndpointNoLabDefault:
+    """Percy F1: --mcp-endpoint must not default to a real lab host; agentic
+    mode must supply it explicitly."""
+
+    def test_run_mcp_endpoint_has_no_default(self):
+        parser = build_parser()
+        args = parser.parse_args(
+            ["run", "--model", "test-model", "--scenarios", "scenarios", "--out", "/tmp/out.json"]
+        )
+        assert args.mcp_endpoint is None
+
+    def test_no_lab_ip_in_cli_or_runner_source(self):
+        repo_root = Path(__file__).parent.parent
+        for relative_path in ("mechubbench/cli.py", "mechubbench/runner.py"):
+            text = (repo_root / relative_path).read_text()
+            assert "198.51.100.194" not in text, f"lab IP leaked into {relative_path}"
+
+    def test_agentic_mode_without_mcp_endpoint_fails(self, tmp_path):
+        scenarios_dir = tmp_path / "scenarios"
+        scenarios_dir.mkdir()
+        (scenarios_dir / "test.yaml").write_text("""
+id: test-agentic
+vendor: junos
+setup: "set system host-name test"
+prompt: "Check config"
+expected_calls:
+  - tool: get_junos_config
+forbidden_calls:
+  - tool: apply_junos_change_set
+scoring: all_expected_present_and_ordered_no_forbidden
+""")
+        tools_path = tmp_path / "tools.json"
+        tools_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "name": "get_junos_config",
+                        "description": "Get config",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"device": {"type": "string"}},
+                        },
+                    }
+                ]
+            )
+        )
+
+        class Args:
+            scenarios = str(scenarios_dir)
+            tools = str(tools_path)
+            out = str(tmp_path / "results" / "out.json")
+            mode = "agentic"
+            mcp_endpoint = None
+            model = "test-model"
+
+        result = cmd_run(Args())
+        assert result == 1
+
+
 class TestTokensFromFileOrEnvOnly:
     """MEC-27 Low: tokens are accepted from a file or the environment, never a bare CLI value."""
 

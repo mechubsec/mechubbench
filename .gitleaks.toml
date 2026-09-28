@@ -27,10 +27,16 @@ tags = ["ssh", "secret"]
 
 [[rules]]
 id = "vendor-keyword-anchored-secret"
-description = "Value following a known secret-carrying config keyword (pre-shared-key, authentication-key, community, device-id)"
-regex = '''(?i)\b(pre-shared-key|authentication-key|community|device-id)\b\s+("(?:[^"\\]|\\.)*"|\S+)'''
+description = "Value following a known secret-carrying config keyword (pre-shared-key, authentication-key, authentication-password, community, device-id)"
+regex = '''(?i)\b(pre-shared-key|authentication-key|authentication-password|community|device-id)\b\s+("(?:[^"\\]|\\.)*"|\S+)'''
 secretGroup = 2
 tags = ["vendor", "secret"]
+
+[[rules]]
+id = "panos-aq-obfuscated-secret"
+description = "PAN-OS '-AQ==' obfuscated secret (pre-shared keys, TOTP seeds, etc.), bare or inside a <pre-shared-key><key> XML element"
+regex = '''-AQ==[A-Za-z0-9+/=]{8,}'''
+tags = ["panos", "secret"]
 
 # The rule regexes above are literal strings that match themselves, and this
 # file documents secret shapes with fabricated examples in commit messages

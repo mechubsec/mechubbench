@@ -34,9 +34,9 @@ def test_ssh_key_redacted():
 
 
 def test_rfc1918_address_redacted():
-    text = "syslog host 198.51.100.150 port 514"
+    text = "syslog host 192.168.50.150 port 514"
     result = redact._redact_text(text)
-    assert "198.51.100.150" not in result
+    assert "192.168.50.150" not in result
     assert redact.REDACTED_IP in result
 
 
@@ -75,6 +75,74 @@ def test_device_id_redacted():
     text = "device-id FAKE0000-1111-2222-3333-444455556666.JUNOS"
     result = redact._redact_text(text)
     assert "FAKE0000-1111-2222-3333-444455556666" not in result
+
+
+def test_snmpv3_authentication_password_redacted():
+    text = "set snmp v3 usm-user u1 authentication-password FAKEsnmpv3authpass"
+    result = redact._redact_text(text)
+    assert "FAKEsnmpv3authpass" not in result
+
+
+def test_bearer_token_redacted():
+    text = "Authorization: Bearer FAKEbearer.tok3n.jwtlike12345"
+    result = redact._redact_text(text)
+    assert "FAKEbearer.tok3n.jwtlike12345" not in result
+    assert "Bearer" in result
+
+
+def test_json_text_keyword_with_colon_and_quotes_redacted():
+    """A secret keyword serialized as JSON text (`"community": "x"`), not a
+    vendor CLI line, must still be caught: the original regex only matched
+    keyword-then-whitespace, missing the colon/quote JSON shape."""
+    text = '{"community": "FAKEcommunityjson"}'
+    result = redact._redact_text(text)
+    assert "FAKEcommunityjson" not in result
+
+
+def test_key_value_equals_syntax_redacted():
+    text = "community=FAKEcommunityequals"
+    result = redact._redact_text(text)
+    assert "FAKEcommunityequals" not in result
+
+
+def test_panos_xml_pre_shared_key_redacted():
+    """PAN-OS XML API responses nest the secret in a child <key> element:
+    <pre-shared-key><key>-AQ==...</key></pre-shared-key>. Redacting the
+    whole element handles the nesting without hardcoding the child tag."""
+    text = "<pre-shared-key><key>-AQ==FAKEbase64secretdata1234</key></pre-shared-key>"
+    result = redact._redact_text(text)
+    assert "FAKEbase64secretdata1234" not in result
+    assert "-AQ==" not in result
+
+
+def test_panos_aq_shape_redacted_outside_xml():
+    """The PAN-OS `-AQ==` obfuscation prefix is a secret shape on its own,
+    independent of any XML wrapping (e.g. bare in a JSON tool response)."""
+    text = '{"psk": "-AQ==FAKEbase64secretdata5678"}'
+    result = redact._redact_text(text)
+    assert "FAKEbase64secretdata5678" not in result
+    assert "-AQ==" not in result
+
+
+def test_dict_key_secret_redacted_even_without_matching_shape():
+    """A secret stored under a known secret-carrying dict key must be
+    redacted even when its value has no recognizable secret shape - the
+    key name is the only signal available (no CLI keyword text to scan)."""
+    obj = {"community": "d3adbeefopaque"}
+    result = redact._redact_obj(obj)
+    assert result == {"community": redact.REDACTED}
+
+
+def test_dict_key_secret_redacted_case_and_underscore_insensitive():
+    obj = {"Encrypted_Password": "opaquevalue"}
+    result = redact._redact_obj(obj)
+    assert result == {"Encrypted_Password": redact.REDACTED}
+
+
+def test_non_secret_key_left_to_text_scanning():
+    obj = {"hostname": "vsrx-ci"}
+    result = redact._redact_obj(obj)
+    assert result == {"hostname": "vsrx-ci"}
 
 
 def test_large_config_blob_reduced_to_digest():
