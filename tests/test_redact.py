@@ -371,6 +371,48 @@ def test_ospf_md5_plaintext_key_redacted():
     assert "FAKEmd5key" not in result
 
 
+def test_json_rendered_config_over_digest_threshold_is_digested():
+    """R-A: the V2 JSON detour returned `json.dumps(...)` before the
+    config-digest size check ran, and json.dumps re-serialises compactly (no
+    newlines), so a large pretty-printed `| display json` config that should
+    be digested sailed through whole instead - a regression versus the
+    equivalent non-JSON text, which was still digested."""
+    host_names = ", ".join(f'"FAKEhost-dc1-leaf{i:03d}"' for i in range(150))
+    text = (
+        "{\n"
+        '  "configuration": {\n'
+        '    "system": {\n'
+        '      "host-name": "FAKEprimaryhostname",\n'
+        f'      "name-server": [{host_names}]\n'
+        "    }\n"
+        "  }\n"
+        "}"
+    )
+    assert len(text) > redact._CONFIG_DIGEST_MIN_CHARS
+    assert text.count("\n") > redact._CONFIG_DIGEST_MIN_LINES
+
+    result = redact._redact_text(text)
+
+    assert "FAKEprimaryhostname" not in result
+    assert "CONFIG DIGEST" in result
+    assert "sha256:" in result
+
+
+def test_text_suffix_keyword_variant_redacted():
+    """R-B: the trailing `\\b` in the keyword regex still failed to match a
+    keyword immediately followed by an `_suffix` (both are word characters,
+    so there's no boundary), leaving `secret_key=...`, `password_plain=...`
+    and `token_value: ...` untouched in text scanning even though the
+    equivalent dict keys were already redacted by `_is_secret_key`."""
+    for text, secret in (
+        ("secret_key=FAKEsk1", "FAKEsk1"),
+        ("password_plain=FAKEpp1", "FAKEpp1"),
+        ("token_value: FAKEtv1", "FAKEtv1"),
+    ):
+        result = redact._redact_text(text)
+        assert secret not in result, f"{text!r} leaked {secret!r}"
+
+
 def test_redact_manifest_from_synthetic_run_with_secret_shapes():
     """A result file written from a synthetic run has secret shapes redacted.
 

@@ -94,9 +94,16 @@ def _keyword_to_pattern(keyword: str) -> str:
 # equals sign. An optional Junos value-format word (`ascii-text`,
 # `hexadecimal`) between the keyword and the actual secret is skipped so the
 # secret itself - not just the format tag - gets redacted.
+#
+# A trailing `[-_][A-Za-z0-9]+` run is consumed after the keyword (and before
+# the `\b`) so a compound key like `secret_key` or `token_value` is matched
+# whole: `_` is a word character, so `\b` alone doesn't fire between the
+# keyword and an attached `_suffix` (same underlying gap V1 fixed on the
+# leading side via the `(?<![A-Za-z0-9])` lookbehind above).
 _SECRET_KEYWORD_ALT = "|".join(_keyword_to_pattern(k) for k in _SECRET_KEYWORDS)
 _SECRET_KEYWORD_RE = re.compile(
-    r'(?i)(?P<key>"?(?<![A-Za-z0-9])(?:' + _SECRET_KEYWORD_ALT + r')\b"?)'
+    r'(?i)(?P<key>"?(?<![A-Za-z0-9])(?:' + _SECRET_KEYWORD_ALT + r')'
+    r'(?:[-_][A-Za-z0-9]+)*\b"?)'
     r"(?P<sep>\s*[:=]\s*|\s+)"
     r"(?:(?:ascii-text|hexadecimal)\s+)?"
     r'(?P<val>"(?:[^"\\]|\\.)*"'
@@ -142,6 +149,22 @@ _CONFIG_DIGEST_MIN_CHARS = 2000
 _CONFIG_DIGEST_MIN_LINES = 5
 
 
+def _is_config_sized(text: str) -> bool:
+    return (
+        len(text) > _CONFIG_DIGEST_MIN_CHARS
+        and text.count("\n") > _CONFIG_DIGEST_MIN_LINES
+    )
+
+
+def _digest(text: str) -> str:
+    digest = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
+    lines = text.count("\n") + 1
+    return (
+        f"[CONFIG DIGEST sha256:{digest} "
+        f"({lines} lines, {len(text)} chars) - content redacted]"
+    )
+
+
 def _redact_text(text: str) -> str:
     stripped = text.lstrip()
     if stripped[:1] in "{[":
@@ -150,6 +173,12 @@ def _redact_text(text: str) -> str:
         except ValueError:
             pass
         else:
+            # Check the digest threshold against the original text first:
+            # json.dumps re-serialises compactly (no newlines), so a large
+            # pretty-printed config would otherwise sail through as full
+            # JSON instead of being digested like its non-JSON equivalent.
+            if _is_config_sized(text):
+                return _digest(text)
             return json.dumps(_redact_obj(parsed))
 
     text = _CRYPT_HASH_RE.sub(REDACTED, text)
@@ -167,13 +196,8 @@ def _redact_text(text: str) -> str:
         lambda m: f"{m.group('key')}{m.group('sep')}{REDACTED}", text
     )
 
-    if len(text) > _CONFIG_DIGEST_MIN_CHARS and text.count("\n") > _CONFIG_DIGEST_MIN_LINES:
-        digest = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
-        lines = text.count("\n") + 1
-        text = (
-            f"[CONFIG DIGEST sha256:{digest} "
-            f"({lines} lines, {len(text)} chars) - content redacted]"
-        )
+    if _is_config_sized(text):
+        text = _digest(text)
 
     return text
 
