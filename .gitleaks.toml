@@ -27,8 +27,8 @@ tags = ["ssh", "secret"]
 
 [[rules]]
 id = "vendor-keyword-anchored-secret"
-description = "Value following a known secret-carrying config keyword (pre-shared-key, authentication-key, authentication-password, community, device-id)"
-regex = '''(?i)\b(pre-shared-key|authentication-key|authentication-password|community|device-id)\b\s+("(?:[^"\\]|\\.)*"|\S+)'''
+description = "Value following a known secret-carrying config keyword (pre-shared-key/psk, authentication-key, authentication-password, community, device-id), skipping an optional Junos value-format word (ascii-text/hexadecimal)"
+regex = '''(?i)\b(pre[-_]shared[-_]key|psk|authentication[-_]key|authentication[-_]password|community|device[-_]id)\b(?:\s*[:=]\s*|\s+)(?:(?:ascii-text|hexadecimal)\s+)?("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']+)'''
 secretGroup = 2
 tags = ["vendor", "secret"]
 
@@ -37,6 +37,24 @@ id = "panos-aq-obfuscated-secret"
 description = "PAN-OS '-AQ==' obfuscated secret (pre-shared keys, TOTP seeds, etc.), bare or inside a <pre-shared-key><key> XML element"
 regex = '''-AQ==[A-Za-z0-9+/=]{8,}'''
 tags = ["panos", "secret"]
+
+# The two rules below are scoped to results/*.json only. They are a backstop
+# for mechubbench.redact, not a replacement for the vendor-shape rules above:
+# a gap in redact.py's own logic (see MEC-226) should still be caught here
+# before a result artifact is committed.
+[[rules]]
+id = "pem-private-key-in-results"
+description = "PEM-encoded private key block leaked into a benchmark result artifact"
+regex = '''-----BEGIN [A-Z ]*PRIVATE KEY-----'''
+path = '''results/.*\.json$'''
+tags = ["pem", "secret", "results"]
+
+[[rules]]
+id = "sensitive-keyword-in-results"
+description = "JSON key:value pair using a sensitive keyword (password/token/api-key/etc.), scoped to results/ so it still catches what mechubbench.redact misses. Requires a `:`/`=` separator (not just whitespace) so ordinary prose containing these words in an error message doesn't self-flag."
+regex = '''(?i)"?\b(password|passphrase|token|api[-_]key|private[-_]key|client[-_]secret|psk|pre[-_]shared[-_]key|secret)\b"?\s*[:=]\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']{4,})'''
+path = '''results/.*\.json$'''
+tags = ["vendor", "secret", "results"]
 
 # The rule regexes above are literal strings that match themselves, and this
 # file documents secret shapes with fabricated examples in commit messages

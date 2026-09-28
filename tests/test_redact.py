@@ -90,6 +90,64 @@ def test_bearer_token_redacted():
     assert "Bearer" in result
 
 
+def test_basic_auth_credentials_redacted():
+    """R3: only Bearer was handled; Basic auth leaked in full."""
+    text = "Authorization: Basic FAKEbase64creds=="
+    result = redact._redact_text(text)
+    assert "FAKEbase64creds==" not in result
+    assert "Basic" in result
+
+
+def test_x_api_key_header_redacted():
+    """R3: the api-key keyword must catch the common x-api-key header form."""
+    text = "x-api-key: FAKExapikeyheadervalue"
+    result = redact._redact_text(text)
+    assert "FAKExapikeyheadervalue" not in result
+
+
+def test_plaintext_pre_shared_key_ascii_text_format_word_redacted():
+    """R1: Junos syntax puts a value-format word between the keyword and the
+    actual secret, so a regex that only redacts the single token right after
+    the keyword redacts the format word and leaves the real secret (the next
+    token) untouched."""
+    text = "set security ike policy p1 pre-shared-key ascii-text FAKEcorrecthorsebatterystaple"
+    result = redact._redact_text(text)
+    assert "FAKEcorrecthorsebatterystaple" not in result
+
+
+def test_plaintext_pre_shared_key_hexadecimal_format_word_redacted():
+    text = "set security ike policy p1 pre-shared-key hexadecimal FAKE0123456789abcdef0123456789"
+    result = redact._redact_text(text)
+    assert "FAKE0123456789abcdef0123456789" not in result
+
+
+def test_text_underscore_keyword_variant_redacted():
+    """R3: the dict path already normalized `_` to `-`, but the text regex
+    only matched the literal hyphenated spelling."""
+    text = '"pre_shared_key": "FAKEundersecretvalue"'
+    result = redact._redact_text(text)
+    assert "FAKEundersecretvalue" not in result
+
+
+def test_single_quoted_value_with_embedded_space_fully_redacted():
+    """R4: there was no single-quote alternative in the value capture, so a
+    single-quoted multi-word value only had its first word swallowed,
+    leaking the rest (plus a stray trailing quote)."""
+    text = "community 'FAKE multi word secretval'"
+    result = redact._redact_text(text)
+    assert result.startswith("community")
+    assert redact.REDACTED in result
+    assert "multi word secretval" not in result
+
+
+def test_quoted_bearer_token_closing_quote_preserved():
+    """R4: `\\S+` for the bearer token ate the closing JSON quote."""
+    text = '{"Authorization": "Bearer FAKEtoken123"}'
+    result = redact._redact_text(text)
+    assert "FAKEtoken123" not in result
+    assert result.endswith('"}')
+
+
 def test_json_text_keyword_with_colon_and_quotes_redacted():
     """A secret keyword serialized as JSON text (`"community": "x"`), not a
     vendor CLI line, must still be caught: the original regex only matched
@@ -143,6 +201,50 @@ def test_non_secret_key_left_to_text_scanning():
     obj = {"hostname": "vsrx-ci"}
     result = redact._redact_obj(obj)
     assert result == {"hostname": "vsrx-ci"}
+
+
+def test_dict_key_secret_redacted_nested_dict_value():
+    """R2: a secret-carrying key whose value is itself a dict (not a str)
+    must still be redacted outright, rather than surviving unredacted."""
+    obj = {"pre-shared-key": {"key": "FAKEnestedsecret"}}
+    result = redact._redact_obj(obj)
+    assert result == {"pre-shared-key": redact.REDACTED}
+
+
+def test_dict_key_secret_redacted_int_value():
+    """R2: a secret-carrying key whose value is a non-str scalar (e.g. an
+    integer device-id) must still be redacted, not passed through untouched."""
+    obj = {"device-id": 123456789}
+    result = redact._redact_obj(obj)
+    assert result == {"device-id": redact.REDACTED}
+
+
+def test_dict_key_secret_redacted_list_value():
+    """R2: a secret-carrying key whose value is a list of dicts must be
+    redacted outright rather than recursing into the list's contents."""
+    obj = {"community": [{"name": "FAKEcommunityname"}]}
+    result = redact._redact_obj(obj)
+    assert result == {"community": redact.REDACTED}
+
+
+def test_dict_key_password_family_variants_redacted():
+    """R3: the dict-key denylist was missing common secret-carrying names
+    (password, token, api_key, private_key, client_secret, psk), which
+    survived key-aware redaction entirely."""
+    for key in (
+        "password",
+        "passphrase",
+        "token",
+        "api_key",
+        "api-key",
+        "private_key",
+        "client_secret",
+        "psk",
+        "presharedkey",
+    ):
+        obj = {key: "FAKEvalue"}
+        result = redact._redact_obj(obj)
+        assert result == {key: redact.REDACTED}, f"key {key!r} was not redacted"
 
 
 def test_large_config_blob_reduced_to_digest():

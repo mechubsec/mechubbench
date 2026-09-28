@@ -41,22 +41,54 @@ _SECRET_KEYWORDS = (
     "secret",
     "encrypted-password",
     "pre-shared-key",
+    "psk",
     "authentication-key",
     "authentication-password",  # SNMPv3 USM auth key
     "community",
     "device-id",
+    "password",
+    "passphrase",
+    "token",
+    "api-key",
+    "private-key",
+    "client-secret",
 )
-_SECRET_KEY_NAMES = frozenset(_SECRET_KEYWORDS)
+
+
+def _normalize_key(key: str) -> str:
+    """Fold a key/keyword to a separator-insensitive form for comparison.
+
+    Vendor CLI, JSON, and Python-style dict keys spell the same secret
+    differently (`pre-shared-key`, `pre_shared_key`, `presharedkey`); collapse
+    all of them to the same bare-word form before comparing.
+    """
+    return key.strip().lower().replace("-", "").replace("_", "")
+
+
+_SECRET_KEY_NAMES = frozenset(_normalize_key(k) for k in _SECRET_KEYWORDS)
+
+
+def _keyword_to_pattern(keyword: str) -> str:
+    """Build a regex fragment matching `keyword` with `-` or `_` word separators."""
+    return "[-_]".join(re.escape(part) for part in keyword.split("-"))
+
 
 # Matches keyword-value pairs across vendor CLI syntax (`community FAKEval`),
-# JSON text (`"community": "FAKEval"`), and key=value syntax (`community=FAKEval`).
+# JSON text (`"community": "FAKEval"`), key=value syntax (`community=FAKEval`),
+# and the `_`/`-` separator variants of multi-word keywords (`pre_shared_key`).
 # The keyword itself may be bare or quoted (JSON keys); the value may be
-# quoted, bare, separated by whitespace, a colon, or an equals sign.
-_SECRET_KEYWORD_ALT = "|".join(re.escape(k) for k in _SECRET_KEYWORDS)
+# double- or single-quoted, bare, separated by whitespace, a colon, or an
+# equals sign. An optional Junos value-format word (`ascii-text`,
+# `hexadecimal`) between the keyword and the actual secret is skipped so the
+# secret itself - not just the format tag - gets redacted.
+_SECRET_KEYWORD_ALT = "|".join(_keyword_to_pattern(k) for k in _SECRET_KEYWORDS)
 _SECRET_KEYWORD_RE = re.compile(
     r'(?i)(?P<key>"?\b(?:' + _SECRET_KEYWORD_ALT + r')\b"?)'
     r"(?P<sep>\s*[:=]\s*|\s+)"
-    r'(?P<val>"(?:[^"\\]|\\.)*"|\S+)'
+    r"(?:(?:ascii-text|hexadecimal)\s+)?"
+    r'(?P<val>"(?:[^"\\]|\\.)*"'
+    r"|'(?:[^'\\]|\\.)*'"
+    r'|[^\s"\']+)'
 )
 
 # PAN-OS's own obfuscation format for secrets (pre-shared keys, TOTP seeds,
@@ -73,9 +105,12 @@ _XML_SECRET_ELEMENT_RE = re.compile(
     r"(?is)<(" + _SECRET_KEYWORD_ALT + r")\b([^>]*)>.*?</\1>"
 )
 
-# `Authorization: Bearer <token>` (or a bare `Bearer <token>` in logged
-# headers/errors) - the scheme name is kept, only the token is redacted.
-_BEARER_TOKEN_RE = re.compile(r"(?i)\bBearer\s+(\S+)")
+# `Authorization: Bearer <token>` / `Authorization: Basic <creds>` (or a bare
+# scheme + token in logged headers/errors) - the scheme name is kept, only
+# the token/credentials are redacted. The token charclass excludes quotes so
+# a JSON-quoted header value (`"Authorization": "Bearer x"`) keeps its
+# closing quote intact.
+_AUTH_SCHEME_TOKEN_RE = re.compile(r'(?i)\b(Bearer|Basic)\s+([^\s"\']+)')
 
 # Large multi-line blobs (e.g. an embedded device config dump) are reduced to
 # a digest rather than stored verbatim.
@@ -91,7 +126,7 @@ def _redact_text(text: str) -> str:
     )
     text = _PANOS_AQ_SECRET_RE.sub(REDACTED, text)
     text = _RFC1918_RE.sub(REDACTED_IP, text)
-    text = _BEARER_TOKEN_RE.sub(lambda m: f"Bearer {REDACTED}", text)
+    text = _AUTH_SCHEME_TOKEN_RE.sub(lambda m: f"{m.group(1)} {REDACTED}", text)
     text = _SECRET_KEYWORD_RE.sub(
         lambda m: f"{m.group('key')}{m.group('sep')}{REDACTED}", text
     )
@@ -108,17 +143,19 @@ def _redact_text(text: str) -> str:
 
 
 def _is_secret_key(key: str) -> bool:
-    return key.strip().lower().replace("_", "-") in _SECRET_KEY_NAMES
+    return _normalize_key(key) in _SECRET_KEY_NAMES
 
 
 def _redact_obj(obj, key: str | None = None):
+    # Key-aware redaction: any value stored under a secret-carrying key
+    # (e.g. {"community": "abc123"}, {"pre-shared-key": {"key": "x"}},
+    # {"device-id": 123456789}) is redacted outright, regardless of its
+    # shape or type - the key name is the only signal available, and a
+    # non-string or nested value is not itself scanned for known secret
+    # shapes below.
+    if key is not None and _is_secret_key(key) and obj is not None:
+        return REDACTED
     if isinstance(obj, str):
-        # Key-aware redaction: a dict value stored under a secret-carrying
-        # key (e.g. {"community": "abc123"}) is redacted outright, since the
-        # value itself may not match any known secret shape - the key name
-        # is the only signal.
-        if key is not None and _is_secret_key(key):
-            return REDACTED
         return _redact_text(obj)
     if isinstance(obj, dict):
         return {k: _redact_obj(v, key=k) for k, v in obj.items()}
