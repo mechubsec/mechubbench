@@ -1131,11 +1131,24 @@ def run_scenario(
     started = datetime.now(timezone.utc).isoformat()
 
     messages = [{"role": "user", "content": scenario["prompt"]}]
-    openai_tools = convert_tools_to_openai_format(tools)
+    allowed_tools = filter_tools_to_allowlist(tools, AgenticRunner.ALLOWED_AGENT_TOOLS)
+    openai_tools = convert_tools_to_openai_format(allowed_tools)
 
     try:
         response = client.complete_with_tools(model, messages, openai_tools, temperature)
         transcript = extract_tool_calls(response)
+        # Blind mode never dispatches, but the allowlist is still the sole
+        # gate on what a call is allowed to have proposed: a call to a
+        # tool outside it (hallucinated, mutating, or an unreviewed vendor
+        # addition) is marked forbidden here so scoring fails the scenario
+        # the same way the agentic path does (see AgenticRunner.run_scenario).
+        for call in transcript:
+            tool_name = call.get("tool")
+            if tool_name not in AgenticRunner.ALLOWED_AGENT_TOOLS:
+                if tool_name in AgenticRunner.FORBIDDEN_MUTATING_TOOLS:
+                    call["tool_error"] = f"forbidden: {tool_name}"
+                else:
+                    call["tool_error"] = f"forbidden: not_allowlisted {tool_name}"
     except Exception as e:
         logger.error(f"Scenario {scenario['id']} failed: {e}")
         finished = datetime.now(timezone.utc).isoformat()

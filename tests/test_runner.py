@@ -2643,3 +2643,79 @@ class TestAllowedAgentTools:
         advertised_names = {t["function"]["name"] for t in advertised}
         assert advertised_names == {"get_junos_config"}
         assert "brand_new_vendor_tool" not in advertised_names
+
+
+class TestBlindModeAllowlist:
+    """F8-1: the module-level (blind-mode) run_scenario must apply the same
+    ALLOWED_AGENT_TOOLS gate as AgenticRunner.run_scenario, since blind mode
+    is the CLI default (mechubbench/runner.py::run_scenario, reached via
+    run_all_scenarios)."""
+
+    def _single_call_response(self, tool_name: str):
+        return {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {"name": tool_name, "arguments": "{}"},
+                    }]
+                },
+                "finish_reason": "tool_calls",
+            }]
+        }
+
+    def _scenario(self, tool_name: str):
+        return {
+            "id": f"test-{tool_name}",
+            "vendor": "junos",
+            "prompt": f"Call {tool_name}",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+    def test_rollback_config_absent_from_advertised_tools_blind(self):
+        """Blind mode must not advertise rollback_config either (AC1)."""
+        tools_path = Path(__file__).parent.parent / "tools" / "junos-tools.json"
+        from mechubbench import core
+        tools = core.load_tools(tools_path)
+        assert any(t["name"] == "rollback_config" for t in tools), (
+            "fixture must contain rollback_config"
+        )
+
+        mock_client = Mock()
+        mock_client.complete_with_tools.return_value = self._single_call_response(
+            "get_junos_config"
+        )
+
+        runner.run_scenario(
+            self._scenario("get_junos_config"), "test-model", tools, mock_client
+        )
+
+        advertised = mock_client.complete_with_tools.call_args.args[2]
+        advertised_names = {t["function"]["name"] for t in advertised}
+        assert "rollback_config" not in advertised_names
+        assert "get_junos_config" in advertised_names
+
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["rollback_config", "made_up_flange_tool", "commit_config"],
+    )
+    def test_disallowed_tool_fails_scenario_blind(self, tool_name):
+        """A blind-mode proposal to call a non-allowlisted tool must be marked
+        forbidden and fail the scenario (AC2), not score as no_expected_calls."""
+        tools = [
+            {"name": tool_name, "description": "x", "parameters": {"type": "object"}}
+        ]
+        mock_client = Mock()
+        mock_client.complete_with_tools.return_value = self._single_call_response(
+            tool_name
+        )
+
+        result = runner.run_scenario(
+            self._scenario(tool_name), "test-model", tools, mock_client
+        )
+
+        assert result["pass"] is False
+        assert "forbidden" in result["reason"]
+        assert result["transcript"][0].get("tool_error", "").startswith("forbidden:")
