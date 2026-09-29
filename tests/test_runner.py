@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
 import httpx
@@ -2537,3 +2538,108 @@ class TestCommittedResidueCheck:
         mcp = Mock()
         mcp.call_tool.side_effect = runner.MCPError("boom")
         assert runner.fetch_config_fingerprint(mcp, "d") is None
+
+
+class TestAllowedAgentTools:
+    """ALLOWED_AGENT_TOOLS is the sole gate on what the model sees and can call (MEC-191)."""
+
+    def _stop_after_one_call(self, tool_name: str):
+        """LLM response sequence: call tool_name once, then stop."""
+        return [
+            {
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {"name": tool_name, "arguments": "{}"},
+                        }]
+                    },
+                    "finish_reason": "tool_calls",
+                }]
+            },
+            {
+                "choices": [{
+                    "message": {"content": "done"},
+                    "finish_reason": "stop",
+                }]
+            },
+        ]
+
+    def _run_with_tool_call(self, tool_name: str, tools: list[dict], mcp_result=None):
+        scenario = {
+            "id": f"test-{tool_name}",
+            "vendor": "junos",
+            "prompt": f"Call {tool_name}",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = self._stop_after_one_call(tool_name)
+        mock_mcp = Mock()
+        if mcp_result is not None:
+            mock_mcp.call_tool.return_value = mcp_result
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm, mcp_client=mock_mcp, device="test-device", max_turns=12,
+        )
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+        return result, mock_llm, mock_mcp
+
+    def test_rollback_config_absent_from_advertised_tools(self):
+        """rollback_config is a real junos-tools.json entry but must never reach the model."""
+        tools_path = Path(__file__).parent.parent / "tools" / "junos-tools.json"
+        from mechubbench import core
+        tools = core.load_tools(tools_path)
+        assert any(t["name"] == "rollback_config" for t in tools), "fixture must contain rollback_config"
+
+        result, mock_llm, _ = self._run_with_tool_call("get_junos_config", tools)
+
+        advertised = mock_llm.complete_with_tools.call_args_list[0].args[2]
+        advertised_names = {t["function"]["name"] for t in advertised}
+        assert "rollback_config" not in advertised_names
+        assert "get_junos_config" in advertised_names
+
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["rollback_config", "made_up_flange_tool", "commit_config"],
+    )
+    def test_disallowed_tool_never_reaches_call_tool_and_fails_scenario(self, tool_name):
+        tools = [{"name": tool_name, "description": "x", "parameters": {"type": "object"}}]
+        result, mock_llm, mock_mcp = self._run_with_tool_call(tool_name, tools)
+
+        mock_mcp.call_tool.assert_not_called()
+        assert result["pass"] is False
+        assert "forbidden" in result["reason"]
+        assert result["transcript"][0].get("tool_error", "").startswith("forbidden:")
+
+    @pytest.mark.parametrize(
+        "tool_name", sorted(runner.AgenticRunner.ALLOWED_AGENT_TOOLS)
+    )
+    def test_every_allowlisted_tool_still_dispatches(self, tool_name):
+        tools = [{"name": tool_name, "description": "x", "parameters": {"type": "object"}}]
+        result, mock_llm, mock_mcp = self._run_with_tool_call(
+            tool_name, tools, mcp_result={"ok": True}
+        )
+
+        mock_mcp.call_tool.assert_called_once()
+        assert mock_mcp.call_tool.call_args.args[0] == tool_name
+        assert "tool_error" not in result["transcript"][0]
+
+    def test_new_unreviewed_tool_is_not_advertised(self):
+        """A schema tool not yet reviewed into the allowlist is filtered (fail closed)."""
+        tools = [
+            {"name": "get_junos_config", "description": "known", "parameters": {"type": "object"}},
+            {
+                "name": "brand_new_vendor_tool",
+                "description": "unreviewed",
+                "parameters": {"type": "object"},
+            },
+        ]
+        result, mock_llm, _ = self._run_with_tool_call(
+            "get_junos_config", tools, mcp_result={"ok": True}
+        )
+
+        advertised = mock_llm.complete_with_tools.call_args_list[0].args[2]
+        advertised_names = {t["function"]["name"] for t in advertised}
+        assert advertised_names == {"get_junos_config"}
+        assert "brand_new_vendor_tool" not in advertised_names

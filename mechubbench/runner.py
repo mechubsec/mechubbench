@@ -387,11 +387,58 @@ def probe_device_liveness(mcp_client: MCPClient, device: str, timeout: int = 10)
         mcp_client.timeout = original_timeout
 
 
+def filter_tools_to_allowlist(tools: list[dict], allowlist: set[str]) -> list[dict]:
+    """Drop tool definitions whose name is not in allowlist.
+
+    Fails closed: a tool the caller doesn't recognize (new vendor tool,
+    typo, anything not explicitly reviewed) is silently omitted rather than
+    advertised to the model.
+    """
+    return [t for t in tools if t.get("name") in allowlist]
+
+
 class AgenticRunner:
     """Agentic loop runner: executes tool calls against real devices via MCP."""
 
-    # Hard-coded safety rail: tools that must never be executed
-    # Covers BOTH vendors' approve/apply/commit surface
+    # Sole gate on what the model may see and call. Everything else —
+    # including a hallucinated name, or a real tool the vendor MCP server
+    # adds later that this set hasn't been reviewed for — is filtered from
+    # the advertised tool list and refused at dispatch (fail closed). Each
+    # entry is read (no candidate/device state change) or stage (creates or
+    # discards a candidate/change-set that requires a separate approve/apply
+    # call to take effect). rollback_config is deliberately excluded: its
+    # commit=true mode is full config-change authority, equivalent to
+    # load_and_commit_config.
+    ALLOWED_AGENT_TOOLS = {
+        # Junos - read
+        "execute_junos_command",
+        "gather_device_facts",
+        "get_junos_candidate_fingerprint",
+        "get_junos_change_set_status",
+        "get_junos_config",
+        "get_router_list",
+        "junos_config_diff",
+        # Junos - stage
+        "commit_check_config",
+        "create_junos_change_set",
+        "discard_candidate",
+        # PAN-OS - read
+        "diff_panos_candidate",
+        "execute_panos_op",
+        "get_candidate_fingerprint",
+        "get_panos_change_set",
+        "get_panos_config",
+        "get_panos_operation",
+        "list_devices",
+        # PAN-OS - stage
+        "create_panos_change_set",
+        "discard_panos_candidate",
+        "validate_panos_candidate",
+    }
+
+    # Retained only as a derived, informational complement to
+    # ALLOWED_AGENT_TOOLS for reporting/messages: every name here is already
+    # outside the allowlist, so it plays no role in the dispatch decision.
     FORBIDDEN_MUTATING_TOOLS = {
         "approve_panos_change_set",
         "apply_panos_change_set",
@@ -399,6 +446,7 @@ class AgenticRunner:
         "approve_junos_change_set",
         "apply_junos_change_set",
         "load_and_commit_config",
+        "rollback_config",
     }
 
     def __init__(
@@ -475,7 +523,8 @@ class AgenticRunner:
                     .replace("panosvm", self.device))
 
         messages = [{"role": "user", "content": prompt}]
-        openai_tools = convert_tools_to_openai_format(tools)
+        allowed_tools = filter_tools_to_allowlist(tools, self.ALLOWED_AGENT_TOOLS)
+        openai_tools = convert_tools_to_openai_format(allowed_tools)
 
         try:
             for turn in range(self.max_turns):
@@ -531,13 +580,19 @@ class AgenticRunner:
                         )
                     tool_error = None
 
-                    # Safety rail: never execute forbidden tools
-                    if tool_name in self.forbidden_tools:
-                        logger.warning(f"Blocked forbidden tool: {tool_name}")
+                    # Safety rail: the allowlist is the sole gate. Any tool
+                    # name outside it — a known mutating tool, a hallucinated
+                    # name, or a real tool nobody has reviewed yet — never
+                    # reaches mcp_client.call_tool.
+                    if tool_name not in self.ALLOWED_AGENT_TOOLS:
+                        logger.warning(f"Blocked non-allowlisted tool: {tool_name}")
                         tool_result = {
                             "error": f"Tool {tool_name} is forbidden in benchmark mode"
                         }
-                        tool_error = f"forbidden: {tool_name}"
+                        if tool_name in self.forbidden_tools:
+                            tool_error = f"forbidden: {tool_name}"
+                        else:
+                            tool_error = f"forbidden: not_allowlisted {tool_name}"
                     elif device_pinned_from:
                         # Safety rail: a model that asks for a device other than
                         # the one it was assigned is attempting to reach past its
