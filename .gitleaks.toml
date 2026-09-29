@@ -28,7 +28,7 @@ tags = ["ssh", "secret"]
 [[rules]]
 id = "vendor-keyword-anchored-secret"
 description = "Value following a known secret-carrying config keyword (pre-shared-key/psk, authentication-key, authentication-password, community, device-id), skipping an optional Junos value-format word (ascii-text/hexadecimal)"
-regex = '''(?i)\b(pre[-_]shared[-_]key|psk|authentication[-_]key|authentication[-_]password|community|device[-_]id)\b(?:\s*[:=]\s*|\s+)(?:(?:ascii-text|hexadecimal)\s+)?("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']+)'''
+regex = '''(?i)\b(pre[-_]shared[-_]key|psk|authentication[-_]key|authentication[-_]password|community|device[-_]id)\b(?:\s*[:=]\s*|\s+)(?:(?:ascii-text|hexadecimal|key)\s+)?("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']+)'''
 secretGroup = 2
 tags = ["vendor", "secret"]
 

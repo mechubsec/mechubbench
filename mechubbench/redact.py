@@ -105,7 +105,7 @@ _SECRET_KEYWORD_RE = re.compile(
     r'(?i)(?P<key>"?(?<![A-Za-z0-9])(?:' + _SECRET_KEYWORD_ALT + r')'
     r'(?:[-_][A-Za-z0-9]+)*\b"?)'
     r"(?P<sep>\s*[:=]\s*|\s+)"
-    r"(?:(?:ascii-text|hexadecimal)\s+)?"
+    r"(?:(?:ascii-text|hexadecimal|key)\s+)?"
     r'(?P<val>"(?:[^"\\]|\\.)*"'
     r"|'(?:[^'\\]|\\.)*'"
     r"|(?![\[{])[^\s\"']+)"
@@ -131,9 +131,12 @@ _PANOS_AQ_SECRET_RE = re.compile(r"-AQ==[A-Za-z0-9+/=]{8,}")
 #   <pre-shared-key><key>-AQ==...</key></pre-shared-key>
 # The secret may sit directly in the element or in a nested child element
 # (like <key>); redacting the whole element body handles both without
-# needing to enumerate vendor-specific child tag names.
+# needing to enumerate vendor-specific child tag names. The tag name may
+# also carry segments around the keyword (e.g. <snmp-community-string>),
+# same as _is_secret_key does for dict keys.
 _XML_SECRET_ELEMENT_RE = re.compile(
-    r"(?is)<(" + _SECRET_KEYWORD_ALT + r")\b([^>]*)>.*?</\1>"
+    r"(?is)<((?:[A-Za-z0-9]+[-_])*(?:" + _SECRET_KEYWORD_ALT + r")"
+    r"(?:[-_][A-Za-z0-9]+)*)\b([^>]*)>.*?</\1>"
 )
 
 # `Authorization: Bearer <token>` / `Authorization: Basic <creds>` (or a bare

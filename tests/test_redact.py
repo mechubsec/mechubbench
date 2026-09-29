@@ -121,6 +121,19 @@ def test_plaintext_pre_shared_key_hexadecimal_format_word_redacted():
     assert "FAKE0123456789abcdef0123456789" not in result
 
 
+def test_plaintext_pre_shared_key_panos_set_format_key_word_redacted():
+    """F2b-1: PAN-OS set-format syntax puts the literal word `key` between
+    the keyword and the actual secret (`pre-shared-key key <secret>`).
+    Without skipping `key` the same way as `ascii-text`/`hexadecimal`, the
+    regex redacts the word `key` itself and leaves the real secret intact."""
+    text = (
+        "set network ike gateway gw1 authentication pre-shared-key "
+        "key FAKEplainpsk999"
+    )
+    result = redact._redact_text(text)
+    assert "FAKEplainpsk999" not in result
+
+
 def test_text_underscore_keyword_variant_redacted():
     """R3: the dict path already normalized `_` to `-`, but the text regex
     only matched the literal hyphenated spelling."""
@@ -180,6 +193,17 @@ def test_panos_aq_shape_redacted_outside_xml():
     result = redact._redact_text(text)
     assert "FAKEbase64secretdata5678" not in result
     assert "-AQ==" not in result
+
+
+def test_panos_xml_compound_tag_snmp_community_string_redacted():
+    """F2b-2: PAN-OS wraps the SNMP community in a compound XML tag name
+    (<snmp-community-string>), not the bare keyword. The XML element rule
+    only matched exact keyword tag names, so the opening tag matched
+    `community` but the closing tag `</snmp-community-string>` never closed
+    it, leaving the plaintext community string untouched."""
+    text = "<v2c><snmp-community-string>FAKEpubcomm</snmp-community-string></v2c>"
+    result = redact._redact_text(text)
+    assert "FAKEpubcomm" not in result
 
 
 def test_dict_key_secret_redacted_even_without_matching_shape():
