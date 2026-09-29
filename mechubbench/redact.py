@@ -48,9 +48,13 @@ _CRYPT_HASH_RE = re.compile(r'\$(?:\d|y|2[aby]|gy|7)\$[^\s"\'\\]+')
 # Matched non-greedily across newlines so a manifest holding the block inside
 # a JSON string (with literal "\n" sequences already decoded to real
 # newlines by json.loads before _redact_text ever sees it as a leaf value)
-# still has the whole block replaced, not just the BEGIN/END lines.
+# still has the whole block replaced, not just the BEGIN/END lines. The END
+# line is optional (`\Z`) so a key body truncated mid-stream - model output
+# and tool arguments both get cut off - still has its body redacted instead
+# of leaking everything after BEGIN.
 _PEM_BLOCK_RE = re.compile(
-    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?"
+    r"(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)",
     re.S,
 )
 
@@ -63,37 +67,31 @@ _SSH_KEY_RE = re.compile(
 # 0-255 so version-like tokens with an out-of-range component (e.g. a
 # four-part build number) don't spuriously match, and so ipaddress.ip_address
 # below never sees a value it would reject.
+#
+# Bounded with lookarounds rather than `\b`: `\b` treats `_` as a word
+# character, so it fails to fire between an identifier prefix and the
+# address in shapes like `addr_8.8.8.8` or `ge-0/0/0_100.64.1.9` (F4-6) -
+# the literal is adjacent to `_` on one or both sides, and `\b` never sees a
+# transition there.
 _IPV4_RE = re.compile(
-    r"\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}"
-    r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:/\d{1,2})?\b"
+    r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}"
+    r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:/\d{1,2})?(?!\d)(?!\.\d)"
 )
 
-# IPv6 literal: full form, every valid "::" compression, and IPv4-mapped
-# forms (::ffff:a.b.c.d), with an optional CIDR suffix. The leading/trailing
-# lookarounds stop a match from starting or ending mid-token so this doesn't
-# fire inside an unrelated hex/word run that happens to contain a colon.
-_IPV6_RE = re.compile(
-    r"""
-    (?<![:.\w])
-    (?:
-        (?:[A-Fa-f0-9]{1,4}:){7}[A-Fa-f0-9]{1,4}
-      | (?:[A-Fa-f0-9]{1,4}:){1,7}:
-      | (?:[A-Fa-f0-9]{1,4}:){1,6}:[A-Fa-f0-9]{1,4}
-      | (?:[A-Fa-f0-9]{1,4}:){1,5}(?::[A-Fa-f0-9]{1,4}){1,2}
-      | (?:[A-Fa-f0-9]{1,4}:){1,4}(?::[A-Fa-f0-9]{1,4}){1,3}
-      | (?:[A-Fa-f0-9]{1,4}:){1,3}(?::[A-Fa-f0-9]{1,4}){1,4}
-      | (?:[A-Fa-f0-9]{1,4}:){1,2}(?::[A-Fa-f0-9]{1,4}){1,5}
-      | [A-Fa-f0-9]{1,4}:(?:(?::[A-Fa-f0-9]{1,4}){1,6})
-      | :(?:(?::[A-Fa-f0-9]{1,4}){1,7}|:)
-      | (?:[A-Fa-f0-9]{1,4}:){1,4}:
-        (?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)
-      | ::(?:[Ff]{4}(?::0{1,4})?:)?
-        (?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)
-    )
-    (?:/\d{1,3})?
-    (?![:.\w])
-    """,
-    re.X,
+# IPv6 candidate: any maximal run of hex/colon/dot characters that contains
+# at least one colon, with an optional CIDR suffix. This is deliberately
+# loose - it also matches things that are not valid IPv6 (a bare "12:30", a
+# "host:port" pair) - because a hand-written grammar tight enough to reject
+# those (the previous _IPV6_RE) creates a differential against
+# ipaddress.ip_address on the *valid* side too: its `(?<![:.\w])` /
+# `(?![:.\w])` boundary lookarounds fail to fire next to another `:` or `.`,
+# so real addresses in `addr: value`, `peer is <addr>.`, or `ip:<addr>`
+# shapes (F4-1) were left unmasked. Bounding on `\w`/`.` only (not `:`) lets
+# the candidate regex over-match; validation is delegated entirely to
+# ipaddress.ip_address in `_mask_ipv6_candidate`, which is the single source
+# of truth for "is this actually an IPv6 address" - no parser differential.
+_IPV6_CANDIDATE_RE = re.compile(
+    r"(?<![\w.])[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*(?:/\d{1,3})?"
 )
 
 # Documentation ranges (RFC 5737, RFC 3849): never real device addresses, so
@@ -142,6 +140,8 @@ _SECRET_KEYWORDS = (
 _IDENTIFIER_KEYWORDS = (
     "host-name",
     "serial-number",
+    "serial",
+    "device-name",
     "username",
     "domain-name",
 )
@@ -172,15 +172,27 @@ _IDENTIFIER_KEYWORD_SEGMENTS = tuple(
 
 # "user" is dict-key-only (see _IDENTIFIER_KEYWORDS docstring above): exact
 # match only, not segment-matched, so a compound key like "user_agent" isn't
-# swept in just because it contains the word "user".
-_IDENTIFIER_DICT_ONLY_KEY_NAMES = frozenset({"user"})
+# swept in just because it contains the word "user". The runner's device
+# identity keys (F4-4: DEVICE_ARG_KEYS in runner.py, plus the manifest's
+# top-level "devices_touched" list) are dict-key-only for the same reason -
+# "device" and "router" are too common in ordinary prose to anchor safely in
+# free text.
+_IDENTIFIER_DICT_ONLY_KEY_NAMES = frozenset(
+    {"user", "device", "router", "routername", "devicestouched"}
+)
 
 _IDENTIFIER_TYPE_BY_NORMALIZED_KEY = {
     "hostname": "HOSTNAME",
     "serialnumber": "SERIAL",
+    "serial": "SERIAL",
+    "devicename": "HOSTNAME",
     "username": "USER",
     "domainname": "DOMAIN",
     "user": "USER",
+    "device": "HOSTNAME",
+    "router": "HOSTNAME",
+    "routername": "HOSTNAME",
+    "devicestouched": "HOSTNAME",
 }
 
 
@@ -190,9 +202,21 @@ def _key_segments(key: str) -> list[str]:
     return [seg.lower() for seg in re.split(r"[-_]", key) if seg]
 
 
-def _keyword_to_pattern(keyword: str) -> str:
-    """Build a regex fragment matching `keyword` with `-` or `_` word separators."""
-    return "[-_]".join(re.escape(part) for part in keyword.split("-"))
+def _keyword_to_pattern(keyword: str, *, optional_sep: bool = False) -> str:
+    """Build a regex fragment matching `keyword` with `-` or `_` word separators.
+
+    `optional_sep` also matches the concatenated bare form (`hostname` for
+    `host-name`) - vendor XML/CLI/prose spell multi-word identifier keywords
+    both ways (`<hostname>` vs `<host-name>`, `Hostname:` vs `Host-Name:`),
+    unlike secret keywords, so only the identifier keyword set opts in
+    (F4-2). Secret keywords keep the separator mandatory: making it optional
+    there would let `_SECRET_KEYWORD_ALT`'s multi-word entries (e.g.
+    `client-secret`) match unrelated concatenations with no word boundary to
+    anchor on, which is a much larger false-positive surface than the small,
+    known identifier keyword set.
+    """
+    sep = "[-_]?" if optional_sep else "[-_]"
+    return sep.join(re.escape(part) for part in keyword.split("-"))
 
 
 # Matches keyword-value pairs across vendor CLI syntax (`community` then a
@@ -229,9 +253,11 @@ _SECRET_KEYWORD_RE = re.compile(
 
 # Same shape as _SECRET_KEYWORD_RE, for the identifier keyword set. No
 # ascii-text/hexadecimal format-word skip: that's a pre-shared-key-specific
-# Junos quirk, not something identifier fields use.
+# Junos quirk, not something identifier fields use. optional_sep=True (see
+# _keyword_to_pattern) so this also matches PAN-OS's concatenated forms
+# (`<hostname>`, `<devicename>`) and prose like `Hostname: fw-edge01` (F4-2).
 _IDENTIFIER_KEYWORD_ALT = "|".join(
-    _keyword_to_pattern(k) for k in _IDENTIFIER_KEYWORDS
+    _keyword_to_pattern(k, optional_sep=True) for k in _IDENTIFIER_KEYWORDS
 )
 _IDENTIFIER_KEYWORD_RE = re.compile(
     r'(?i)(?P<key>"?(?<![A-Za-z0-9])(?:' + _IDENTIFIER_KEYWORD_ALT + r')'
@@ -316,6 +342,49 @@ def _digest(text: str) -> str:
     )
 
 
+def validate_expected_literal(literal: str) -> None:
+    """Raise ValueError if `literal` would exempt more than a single host
+    address from IP masking (F4-7).
+
+    `expected_literals` also carries non-IP identifier literals (a
+    device/hostname a scenario needs visible under F4-4's HOSTNAME masking -
+    e.g. `vsrx-ci`), so a bare literal that isn't CIDR notation (no `/`) is
+    always accepted here without being parsed as an IP: it's either a valid
+    host address (a single value, nothing to widen) or a non-IP identifier
+    (out of this function's scope entirely). Only CIDR notation is checked,
+    since that's the only shape that can widen the exemption to a whole
+    subnet - a scenario author can't accidentally turn off masking for more
+    than one address any other way.
+    """
+    if "/" not in literal:
+        return
+    try:
+        network = ipaddress.ip_network(literal, strict=False)
+    except ValueError as exc:
+        raise ValueError(
+            f"expected_literals entry {literal!r} is not a valid CIDR network"
+        ) from exc
+    if network.prefixlen == network.max_prefixlen:
+        return
+    if any(
+        network.subnet_of(doc)
+        for doc in _DOC_RANGE_NETWORKS + _LOOPBACK_NETWORKS
+        if network.version == doc.version
+    ):
+        return
+    raise ValueError(
+        f"expected_literals entry {literal!r} is a network wider than a "
+        "single host and outside the documentation/loopback ranges; declare "
+        "individual host addresses instead of a wide exemption"
+    )
+
+
+def _strip_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
 class _RedactionState:
     """Bookkeeping shared across one `redact_manifest` call.
 
@@ -328,16 +397,20 @@ class _RedactionState:
     def __init__(self, allowed_literals: frozenset[str] | None = None) -> None:
         self._allowed_networks: list = []
         self._allowed_addresses: set = set()
+        self._allowed_literal_strings: frozenset[str] = frozenset(
+            allowed_literals or ()
+        )
         for literal in allowed_literals or ():
-            try:
-                if "/" in literal:
-                    self._allowed_networks.append(
-                        ipaddress.ip_network(literal, strict=False)
-                    )
-                else:
-                    self._allowed_addresses.add(ipaddress.ip_address(literal))
-            except ValueError:
+            validate_expected_literal(literal)
+            if "/" in literal:
+                self._allowed_networks.append(
+                    ipaddress.ip_network(literal, strict=False)
+                )
                 continue
+            try:
+                self._allowed_addresses.add(ipaddress.ip_address(literal))
+            except ValueError:
+                pass  # not an IP - a non-IP identifier literal (F4-4)
         self._ip_placeholders: dict[str, str] = {}
         self._ip_counter = 0
         self._id_placeholders: dict[tuple[str, str], str] = {}
@@ -359,6 +432,11 @@ class _RedactionState:
                     return True
         return False
 
+    def is_allowed_identifier(self, value: str) -> bool:
+        """Whether a non-IP identifier value (hostname, device name, ...)
+        was explicitly declared via `expected_literals` (F4-4)."""
+        return _strip_quotes(value).strip() in self._allowed_literal_strings
+
     def ip_placeholder(self, address_text: str) -> str:
         if address_text not in self._ip_placeholders:
             self._ip_counter += 1
@@ -366,7 +444,7 @@ class _RedactionState:
         return self._ip_placeholders[address_text]
 
     def identifier_placeholder(self, kind: str, value: str) -> str:
-        cache_key = (kind, value)
+        cache_key = (kind, _strip_quotes(value))
         if cache_key not in self._id_placeholders:
             self._id_counters[kind] = self._id_counters.get(kind, 0) + 1
             self._id_placeholders[cache_key] = f"<{kind}-{self._id_counters[kind]}>"
@@ -402,24 +480,77 @@ def _mask_ip_match(match: re.Match, state: _RedactionState) -> str:
         return literal
     if state.is_allowed_ip(addr):
         return literal
-    placeholder = state.ip_placeholder(address_part)
+    # Key on the canonical str(addr), not the literal text, so two spellings
+    # of the same address (full vs. compressed IPv6, "2001:470:0::7" vs.
+    # "2001:470::7") collapse to the same placeholder (F4-8).
+    placeholder = state.ip_placeholder(str(addr))
     return f"{placeholder}/{prefix}" if sep else placeholder
+
+
+def _mask_ipv6_candidate(match: re.Match, state: _RedactionState) -> str:
+    """Validate an `_IPV6_CANDIDATE_RE` match against ipaddress.ip_address,
+    trimming a trailing separator run first (F4-1).
+
+    The candidate regex over-matches (see its docstring): a real address
+    embedded in `addr: value`, `addr.`, or `addr, ...` prose pulls in a
+    trailing `:`/`.` that isn't part of the address. Rather than encode that
+    ambiguity into the regex, strip trailing `:`/`.` characters one at a
+    time until either ipaddress.ip_address accepts what remains or nothing
+    is left - whichever comes first - and put the stripped suffix back
+    after the placeholder unchanged.
+    """
+    literal = match.group(0)
+    body, sep, prefix = literal.partition("/")
+    if sep and not prefix.isdigit():
+        return literal
+    # Try the run as-is before trimming anything: a trailing "::" is often
+    # not a separator but valid zero-compression syntax in its own right
+    # (e.g. "2620:119:35::" is a complete address), so stripping unions
+    # eagerly would turn a valid address into an invalid prefix of one.
+    trimmed = ""
+    addr = None
+    while True:
+        try:
+            addr = ipaddress.ip_address(body)
+        except ValueError:
+            if body and body[-1] in ":.":
+                trimmed = body[-1] + trimmed
+                body = body[:-1]
+                continue
+            return literal
+        break
+    if addr.version != 6:
+        return literal
+    if state.is_allowed_ip(addr):
+        return literal
+    placeholder = state.ip_placeholder(str(addr))
+    if sep:
+        return f"{placeholder}/{prefix}{trimmed}"
+    return f"{placeholder}{trimmed}"
 
 
 def _sub_identifier_keyword(match: re.Match, state: _RedactionState) -> str:
     key_text = match.group("key")
+    val = match.group("val")
+    if state.is_allowed_identifier(val):
+        return match.group(0)
     id_type = _identifier_type_for_key(key_text.strip('"')) or "ID"
-    placeholder = state.identifier_placeholder(id_type, match.group("val"))
+    placeholder = state.identifier_placeholder(id_type, val)
     return f"{key_text}{match.group('sep')}{placeholder}"
 
 
 def _sub_login_user(match: re.Match, state: _RedactionState) -> str:
-    placeholder = state.identifier_placeholder("USER", match.group("val"))
+    val = match.group("val")
+    if state.is_allowed_identifier(val):
+        return match.group(0)
+    placeholder = state.identifier_placeholder("USER", val)
     return f"{match.group('key')}{match.group('sep')}{placeholder}"
 
 
 def _sub_identifier_xml(match: re.Match, state: _RedactionState) -> str:
     tag, attrs, inner = match.group(1), match.group(2), match.group(3)
+    if state.is_allowed_identifier(inner):
+        return match.group(0)
     id_type = _identifier_type_for_key(tag) or "ID"
     placeholder = state.identifier_placeholder(id_type, inner)
     return f"<{tag}{attrs}>{placeholder}</{tag}>"
@@ -454,7 +585,7 @@ def _redact_text(text: str, state: _RedactionState | None = None) -> str:
         lambda m: _sub_identifier_xml(m, state), text
     )
     text = _PANOS_AQ_SECRET_RE.sub(REDACTED, text)
-    text = _IPV6_RE.sub(lambda m: _mask_ip_match(m, state), text)
+    text = _IPV6_CANDIDATE_RE.sub(lambda m: _mask_ipv6_candidate(m, state), text)
     text = _IPV4_RE.sub(lambda m: _mask_ip_match(m, state), text)
     text = _AUTH_SCHEME_TOKEN_RE.sub(lambda m: f"{m.group(1)} {REDACTED}", text)
     text = _SECRET_KEYWORD_RE.sub(
@@ -488,6 +619,36 @@ def _is_secret_key(key: str) -> bool:
     return False
 
 
+def _redact_key(key, state: _RedactionState):
+    """Mask IP-shaped dict keys (F4-5).
+
+    Vendor API responses (Mist, PAN-OS) sometimes key a dict by IP address,
+    e.g. `{"8.8.4.4": {...}}`; only the IP shapes are checked here, not the
+    full secret/keyword machinery, since a secret- or identifier-keyword-
+    shaped *key* (as opposed to value) is not a realistic vendor API shape,
+    and running the whole `_redact_text` pipeline over every dict key would
+    be needless overhead for no real coverage gain.
+    """
+    if not isinstance(key, str):
+        return key
+    masked = _IPV6_CANDIDATE_RE.sub(lambda m: _mask_ipv6_candidate(m, state), key)
+    masked = _IPV4_RE.sub(lambda m: _mask_ip_match(m, state), masked)
+    return masked
+
+
+def _redact_identifier_value(obj, id_type: str, state: _RedactionState):
+    """Mask a value stored under an identifier-carrying dict key, honoring
+    `expected_literals` exemptions and masking each element of a list value
+    individually (F4-4: e.g. the manifest's top-level `devices_touched`
+    list) rather than collapsing the whole list into one placeholder."""
+    if isinstance(obj, list):
+        return [_redact_identifier_value(v, id_type, state) for v in obj]
+    value_for_placeholder = obj if isinstance(obj, str) else repr(obj)
+    if state.is_allowed_identifier(value_for_placeholder):
+        return obj
+    return state.identifier_placeholder(id_type, value_for_placeholder)
+
+
 def _redact_obj(obj, key: str | None = None, state: _RedactionState | None = None):
     if state is None:
         state = _RedactionState()
@@ -503,13 +664,15 @@ def _redact_obj(obj, key: str | None = None, state: _RedactionState | None = Non
             return REDACTED
         id_type = _identifier_type_for_key(key)
         if id_type is not None:
-            value_for_placeholder = obj if isinstance(obj, str) else repr(obj)
-            return state.identifier_placeholder(id_type, value_for_placeholder)
+            return _redact_identifier_value(obj, id_type, state)
 
     if isinstance(obj, str):
         return _redact_text(obj, state=state)
     if isinstance(obj, dict):
-        return {k: _redact_obj(v, key=k, state=state) for k, v in obj.items()}
+        return {
+            _redact_key(k, state): _redact_obj(v, key=k, state=state)
+            for k, v in obj.items()
+        }
     if isinstance(obj, list):
         return [_redact_obj(v, key=key, state=state) for v in obj]
     return obj

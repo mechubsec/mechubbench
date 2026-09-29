@@ -82,6 +82,19 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     logger.info(f"Loaded {len(scenarios)} scenario(s)")
 
+    # Fail fast on a scenario declaring a too-wide expected_literals
+    # exemption (F4-7), rather than running the whole benchmark and only
+    # discovering the redaction config error when writing the manifest.
+    for scenario in scenarios:
+        for literal in scenario.get("expected_literals") or []:
+            try:
+                redact.validate_expected_literal(literal)
+            except ValueError as e:
+                logger.error(
+                    f"Scenario '{scenario.get('id', 'unknown')}': {e}"
+                )
+                return 1
+
     logger.info(f"Loading tools from {tools_path}")
     tools = core.load_tools(tools_path)
     logger.info(f"Loaded {len(tools)} tool(s)")

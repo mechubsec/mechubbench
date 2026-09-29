@@ -116,7 +116,7 @@
     },
     "expected_literals": {
       "type": "array",
-      "description": "IP literals (bare addresses or CIDR ranges) a scorer depends on seeing, so mechubbench.redact's allowlist-shaped IP masking must leave them unmasked in the committed results/*.json",
+      "description": "Values a scorer depends on seeing, so mechubbench.redact's allowlist-shaped masking must leave them unmasked in the committed results/*.json. Either a bare non-IP identifier (a lab device/hostname), or an IP literal: a bare host address, or a CIDR range no wider than a single host (/32, /128) unless it falls inside a documentation/loopback range - mechubbench.redact.validate_expected_literal rejects anything wider at scenario load time (F4-7), since this field exempts specific values, not whole subnets, from masking",
       "items": {
         "type": "string"
       }
