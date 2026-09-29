@@ -17,13 +17,13 @@
           "tool": "get_junos_config",
           "args": {
             "config_path": "security policies",
-            "device": "demo-srx"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies"
           }
         },
@@ -32,13 +32,13 @@
           "args": {
             "config_path": "security policies",
             "max_lines": 1000,
-            "device": "demo-srx"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies",
             "max_lines": 1000
           }
@@ -46,7 +46,7 @@
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "<current-fingerprint>",
             "actions": [
               {
@@ -71,6 +71,6 @@
   ],
   "mode": "agentic",
   "devices_touched": [
-    "vsrx-ci"
+    "<HOSTNAME-2>"
   ]
 }

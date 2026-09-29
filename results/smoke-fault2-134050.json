@@ -16,14 +16,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone trust to-zone untrust"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "current-fingerprint",
             "actions": [
               {
@@ -50,14 +50,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system host-fingerprint"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "",
             "actions": [
               {
@@ -78,14 +78,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system host-fingerprint"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "<correct-fingerprint>",
             "actions": [
               {
@@ -108,6 +108,6 @@
   ],
   "mode": "agentic",
   "devices_touched": [
-    "vsrx-ci"
+    "<HOSTNAME-1>"
   ]
 }

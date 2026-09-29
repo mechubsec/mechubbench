@@ -17,7 +17,7 @@
           "tool": "execute_junos_command",
           "args": {
             "command": "show ntp status",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -32,7 +32,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies"
           }
         }
@@ -48,17 +48,17 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "source-device"
+            "device": "<HOSTNAME-2>"
           },
-          "tool_error": "Tool execution failed: token 'mechubbench' is not authorized for router 'source-device' (tool 'get_junos_config')"
+          "tool_error": "Tool execution failed: token [REDACTED] is not authorized for router 'source-device' (tool 'get_junos_config')"
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "source-device",
+            "device": "<HOSTNAME-2>",
             "config_path": "system"
           },
-          "tool_error": "Tool execution failed: token 'mechubbench' is not authorized for router 'source-device' (tool 'get_junos_config')"
+          "tool_error": "Tool execution failed: token [REDACTED] is not authorized for router 'source-device' (tool 'get_junos_config')"
         }
       ]
     },
@@ -72,10 +72,10 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "source_device_name",
+            "device": "<HOSTNAME-3>",
             "config_path": "security zones security-zone trust"
           },
-          "tool_error": "Tool execution failed: token 'mechubbench' is not authorized for router 'source_device_name' (tool 'get_junos_config')"
+          "tool_error": "Tool execution failed: token [REDACTED] is not authorized for router 'source_device_name' (tool 'get_junos_config')"
         }
       ]
     },
@@ -89,94 +89,94 @@
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services domain-options name-servers 1.1.1.2; set system services domain-options name-servers 1.0.0.2;",
-            "device": "vsrx-ci"
+            "config_text": "set system services domain-options name-servers <IP-1>; set system services domain-options name-servers <IP-2>;",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services dns forwarding-options server 1.1.1.2\\nset system services dns forwarding-options server 1.0.0.2",
-            "device": "vsrx-ci"
+            "config_text": "set system services dns forwarding-options server <IP-1>\\nset system services dns forwarding-options server <IP-2>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services dns forwarding-options server 1.1.1.2\\nset system services dns forwarding-options server 1.0.0.2",
-            "device": "vsrx-ci"
+            "config_text": "set system services dns forwarding-options server <IP-1>\\nset system services dns forwarding-options server <IP-2>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services dns forwarding-options server 1.1.1.2\\nset system services dns forwarding-options server 1.0.0.2",
-            "device": "vsrx-ci"
+            "config_text": "set system services dns forwarding-options server <IP-1>\\nset system services dns forwarding-options server <IP-2>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services dns forwarding-options server 1.1.1.2\nset system services dns forwarding-options server 1.0.0.2",
-            "device": "vsrx-ci"
+            "config_text": "set system services dns forwarding-options server <IP-1>\nset system services dns forwarding-options server <IP-2>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services dns forwarding-options server 1.1.1.2\nset system services dns forwarding-options server 1.0.0.2",
-            "device": "vsrx-ci"
+            "config_text": "set system services dns forwarding-options server <IP-1>\nset system services dns forwarding-options server <IP-2>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "gather_device_facts",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services dns forwarding-options server 1.1.1.2\nset system services dns forwarding-options server 1.0.0.2",
-            "device": "vsrx-ci"
+            "config_text": "set system services dns forwarding-options server <IP-1>\nset system services dns forwarding-options server <IP-2>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services dns forwarding-options server 1.1.1.2\\nset system services dns forwarding-options server 1.0.0.2",
-            "device": "vsrx-ci"
+            "config_text": "set system services dns forwarding-options server <IP-1>\\nset system services dns forwarding-options server <IP-2>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services dns forwarding-options server 1.1.1.2\nset system services dns forwarding-options server 1.0.0.2",
-            "device": "vsrx-ci"
+            "config_text": "set system services dns forwarding-options server <IP-1>\nset system services dns forwarding-options server <IP-2>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services dns forwarding-options server 1.1.1.2\nset system services dns forwarding-options server 1.0.0.2",
-            "device": "vsrx-ci"
+            "config_text": "set system services dns forwarding-options server <IP-1>\nset system services dns forwarding-options server <IP-2>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services dns forwarding-options server 1.1.1.2\nset system services dns forwarding-options server 1.0.0.2",
-            "device": "vsrx-ci"
+            "config_text": "set system services dns forwarding-options server <IP-1>\nset system services dns forwarding-options server <IP-2>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         }
@@ -192,15 +192,15 @@
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system services ntp server 132.163.97.1\\nset system services ntp server 128.138.140.44",
-            "device": "vsrx-ci"
+            "config_text": "set system services ntp server <IP-3>\\nset system services ntp server <IP-4>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           },
           "tool_error": "Tool execution failed: failed to deserialize parameters: unknown field `version`, expected one of `device`, `router`, `router_name`, `timeout`, `config_path`, `filter`, `max_lines`, `max_bytes`, `tail`"
@@ -208,8 +208,8 @@
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system ntp server 132.163.97.1\nset system ntp server 128.138.140.44",
-            "device": "vsrx-ci"
+            "config_text": "set system ntp server <IP-3>\nset system ntp server <IP-4>",
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -224,14 +224,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone trust to-zone untrust"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone trust to-zone untrust"
           }
         },
@@ -239,7 +239,7 @@
           "tool": "execute_junos_command",
           "args": {
             "command": "set security policies from-zone trust to-zone untrust policy demo-bad then deny",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
         },
@@ -247,7 +247,7 @@
           "tool": "commit_check_config",
           "args": {
             "config_text": "set security policies from-zone trust to-zone untrust policy demo-bad then deny",
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_format": "set"
           }
         }
@@ -265,13 +265,13 @@
           "args": {
             "version": 0,
             "commit": false,
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
@@ -279,14 +279,14 @@
           "tool": "rollback_config",
           "args": {
             "commit": false,
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
@@ -294,13 +294,13 @@
           "tool": "junos_config_diff",
           "args": {
             "version": 0,
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
@@ -308,7 +308,7 @@
           "tool": "rollback_config",
           "args": {
             "commit": false,
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
@@ -316,28 +316,28 @@
           "tool": "rollback_config",
           "args": {
             "commit": false,
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
@@ -345,7 +345,7 @@
           "tool": "rollback_config",
           "args": {
             "commit": false,
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
@@ -353,21 +353,21 @@
           "tool": "rollback_config",
           "args": {
             "commit": false,
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
@@ -375,7 +375,7 @@
           "tool": "execute_junos_command",
           "args": {
             "command": "diff | compare with version 0",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command> or </command>"
         },
@@ -383,14 +383,14 @@
           "tool": "execute_junos_command",
           "args": {
             "command": "diff <configuration compare from-rollback 0>",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command> or </command>"
         },
         {
           "tool": "rollback_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0,
             "commit": false
           }
@@ -407,7 +407,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system dns"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
@@ -415,7 +415,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system dns"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
@@ -423,7 +423,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system dns"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
@@ -431,24 +431,24 @@
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system dns name-server 1.1.1.2\\nset system dns name-server 1.0.0.2\\nset system dns domain-search mechub.org",
-            "device": "vsrx-ci"
+            "config_text": "set system dns name-server <IP-1>\\nset system dns name-server <IP-2>\\nset system dns domain-search mechub.org",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system dns name-server 1.1.1.2\\nset system dns name-server 1.0.0.2\\nset system dns domain-search mechub.org",
-            "device": "vsrx-ci"
+            "config_text": "set system dns name-server <IP-1>\\nset system dns name-server <IP-2>\\nset system dns domain-search mechub.org",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system dns name-server 1.1.1.2\\nset system dns name-server 1.0.0.2\\nset system dns domain-search mechub.org",
-            "device": "vsrx-ci"
+            "config_text": "set system dns name-server <IP-1>\\nset system dns name-server <IP-2>\\nset system dns domain-search mechub.org",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
@@ -456,7 +456,7 @@
           "tool": "execute_junos_command",
           "args": {
             "command": "load override",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
         },
@@ -464,7 +464,7 @@
           "tool": "execute_junos_command",
           "args": {
             "command": "commit check",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command> or </command>"
         },
@@ -472,14 +472,14 @@
           "tool": "execute_junos_command",
           "args": {
             "command": "load override",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
         },
         {
           "tool": "execute_junos_command",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "command": "commit check"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command> or </command>"
@@ -488,14 +488,14 @@
           "tool": "execute_junos_command",
           "args": {
             "command": "load override",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
         },
         {
           "tool": "execute_junos_command",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "command": "commit check"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command> or </command>"
@@ -504,7 +504,7 @@
           "tool": "execute_junos_command",
           "args": {
             "command": "load override",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
         },
@@ -512,14 +512,14 @@
           "tool": "execute_junos_command",
           "args": {
             "command": "load override",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
         },
         {
           "tool": "execute_junos_command",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "command": "load override"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
@@ -536,49 +536,49 @@
         {
           "tool": "execute_junos_command",
           "args": {
-            "command": "delete ntp server; set ntp server 132.163.97.1; set ntp server 128.138.140.44",
-            "device": "vsrx-ci"
+            "command": "delete ntp server; set ntp server <IP-3>; set ntp server <IP-4>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command> or </command>"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "delete ntp server\\nset ntp server 132.163.97.1\\nset ntp server 128.138.140.44",
-            "device": "vsrx-ci"
+            "config_text": "delete ntp server\\nset ntp server <IP-3>\\nset ntp server <IP-4>",
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system ntp"
           }
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "delete system ntp server 129.6.15.28;\ndelete system ntp server 129.6.15.29;\ndelete system ntp server 129.6.15.30;\ndelete system ntp server 192.0.2.10;\ndelete system ntp server 192.0.2.11;\nset system ntp server 132.163.97.1;\nset system ntp server 128.138.140.44;",
+            "device": "<HOSTNAME-1>",
+            "config_text": "delete system ntp server <IP-5>;\ndelete system ntp server <IP-6>;\ndelete system ntp server <IP-7>;\ndelete system ntp server 192.0.2.10;\ndelete system ntp server 192.0.2.11;\nset system ntp server <IP-3>;\nset system ntp server <IP-4>;",
             "config_format": "set"
           },
-          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: 129.6.15.28;"
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: <HOSTNAME-4>"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "delete system ntp server 129.6.15.28;\ndelete system ntp server 129.6.15.29;\ndelete system ntp server 129.6.15.30;\ndelete system ntp server 192.0.2.10;\ndelete system ntp server 192.0.2.11;\nset system ntp server 132.163.97.1 prefer;\nset system ntp server 128.138.140.44;",
+            "device": "<HOSTNAME-1>",
+            "config_text": "delete system ntp server <IP-5>;\ndelete system ntp server <IP-6>;\ndelete system ntp server <IP-7>;\ndelete system ntp server 192.0.2.10;\ndelete system ntp server 192.0.2.11;\nset system ntp server <IP-3> prefer;\nset system ntp server <IP-4>;",
             "config_format": "set"
           },
-          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: 129.6.15.28;"
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: <HOSTNAME-4>"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "set system ntp server 132.163.97.1 prefer;\nset system ntp server 128.138.140.44;",
+            "device": "<HOSTNAME-1>",
+            "config_text": "set system ntp server <IP-3> prefer;\nset system ntp server <IP-4>;",
             "config_format": "set"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
@@ -586,47 +586,47 @@
         {
           "tool": "commit_check_config",
           "args": {
-            "config_text": "set system ntp server 132.163.97.1 prefer;\nset system ntp server 128.138.140.44;",
+            "config_text": "set system ntp server <IP-3> prefer;\nset system ntp server <IP-4>;",
             "config_format": "set",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "set system ntp server 132.163.97.1;\nset system ntp server 128.138.140.44;",
+            "device": "<HOSTNAME-1>",
+            "config_text": "set system ntp server <IP-3>;\nset system ntp server <IP-4>;",
             "config_format": "set"
           },
-          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: 132.163.97.1;"
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: <HOSTNAME-5>"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "set system ntp server 132.163.97.1;\nset system ntp server 128.138.140.44;",
+            "device": "<HOSTNAME-1>",
+            "config_text": "set system ntp server <IP-3>;\nset system ntp server <IP-4>;",
             "config_format": "set"
           },
-          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: 132.163.97.1;"
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: <HOSTNAME-5>"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "set system ntp server 132.163.97.1;\nset system ntp server 128.138.140.44;",
+            "device": "<HOSTNAME-1>",
+            "config_text": "set system ntp server <IP-3>;\nset system ntp server <IP-4>;",
             "config_format": "set"
           },
-          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: 132.163.97.1;"
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: <HOSTNAME-5>"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "set system ntp server 132.163.97.1;\nset system ntp server 128.138.140.44;",
+            "device": "<HOSTNAME-1>",
+            "config_text": "set system ntp server <IP-3>;\nset system ntp server <IP-4>;",
             "config_format": "set"
           },
-          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: 132.163.97.1;"
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: <HOSTNAME-5>"
         }
       ]
     },
@@ -640,7 +640,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security address-book"
           }
         }
@@ -656,7 +656,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone trust to-zone untrust"
           }
         }
@@ -665,6 +665,6 @@
   ],
   "mode": "agentic",
   "devices_touched": [
-    "vsrx-ci"
+    "<HOSTNAME-1>"
   ]
 }

@@ -16,14 +16,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone trust to-zone untrust"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone trust to-zone untrust"
           }
         },
@@ -31,7 +31,7 @@
           "tool": "get_junos_config",
           "args": {
             "max_lines": 1000,
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone trust to-zone untrust"
           }
         }
@@ -40,6 +40,6 @@
   ],
   "mode": "agentic",
   "devices_touched": [
-    "vsrx-ci"
+    "<HOSTNAME-2>"
   ]
 }

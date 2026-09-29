@@ -16,49 +16,49 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies policy"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policy"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "max_lines": 500
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "max_lines": 1500
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "policies"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "",
             "actions": [
               {
@@ -73,7 +73,7 @@
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -81,6 +81,6 @@
   ],
   "mode": "agentic",
   "devices_touched": [
-    "vsrx-ci"
+    "<HOSTNAME-1>"
   ]
 }

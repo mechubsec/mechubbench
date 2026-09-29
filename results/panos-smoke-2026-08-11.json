@@ -16,7 +16,7 @@
         {
           "tool": "gather_device_facts",
           "args": {
-            "device": "panosvm"
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -24,6 +24,6 @@
   ],
   "mode": "agentic",
   "devices_touched": [
-    "panosvm"
+    "<HOSTNAME-1>"
   ]
 }

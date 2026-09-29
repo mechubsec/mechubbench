@@ -17,6 +17,6 @@
   ],
   "mode": "agentic",
   "devices_touched": [
-    "vsrx-br01"
+    "<HOSTNAME-1>"
   ]
 }

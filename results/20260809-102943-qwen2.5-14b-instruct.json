@@ -16,7 +16,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "system ntp"
           }
         }
@@ -32,21 +32,21 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "system host-name"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "system software-release"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "system dns servers name-server"
           }
         },
@@ -55,13 +55,13 @@
           "args": {
             "source": "running",
             "xpath": "/config/devices/entry/vsys/entry[@name='vsys1']/host-dns-server/ip",
-            "device": "panosvm"
+            "device": "<HOSTNAME-2>"
           }
         },
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "source": "running",
             "xpath": "/config/system/software/current-version"
           }
@@ -69,7 +69,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "source": "running",
             "xpath": "/config/devices/entry/vsys/entry[@name='vsys1']/host-name"
           }
@@ -87,13 +87,13 @@
           "tool": "get_panos_config",
           "args": {
             "xpath": "/config/devices/entry[@name='localhost.localdomain']/host-info",
-            "device": "panosvm"
+            "device": "<HOSTNAME-2>"
           }
         },
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "xpath": "/config/system/software"
           }
         }
@@ -109,7 +109,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies",
             "max_lines": 1000,
             "timeout": 30
@@ -127,7 +127,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "source-device",
+            "device": "<HOSTNAME-3>",
             "config_path": "/system",
             "max_bytes": 5000,
             "timeout": 30
@@ -145,7 +145,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "source-device",
+            "device": "<HOSTNAME-3>",
             "config_path": "/system security zones name trust"
           }
         }
@@ -161,7 +161,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx"
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -176,20 +176,20 @@
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "current-fingerprint",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system ntp server 132.163.97.1"
+                  "text": "set system ntp server <IP-1>"
                 },
                 "type": "object"
               },
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system ntp server 128.138.140.44"
+                  "text": "set system ntp server <IP-2>"
                 },
                 "type": "object"
               }
@@ -199,7 +199,7 @@
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "demo-srx"
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -214,7 +214,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone trust to-zone untrust"
           }
         }
@@ -233,16 +233,16 @@
             "actions": [
               {
                 "action": "set",
-                "element": "<server><ip-address>1.1.1.2</ip-address></server>",
+                "element": "<server><ip-address><IP-3></ip-address></server>",
                 "xpath": "/config/devices/entry/vsys/entry[@name='vsys0']/device-group/entry[@name='shared']/dns-setting/server[1]"
               },
               {
                 "action": "set",
-                "element": "<server><ip-address>1.0.0.2</ip-address></server>",
+                "element": "<server><ip-address><IP-4></ip-address></server>",
                 "xpath": "/config/devices/entry/vsys/entry[@name='vsys0']/device-group/entry[@name='shared']/dns-setting/server[2]"
               }
             ],
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "expected_candidate_fingerprint": "current-fingerprint"
           }
         }
@@ -258,7 +258,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "/system"
           }
         },
@@ -266,7 +266,7 @@
           "tool": "rollback_config",
           "args": {
             "rollback_id": 0,
-            "device": "demo-srx"
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -289,7 +289,7 @@
                 "xpath": "/config/system/message-banner"
               }
             ],
-            "device": "panosvm"
+            "device": "<HOSTNAME-2>"
           }
         }
       ]
@@ -304,7 +304,7 @@
         {
           "tool": "diff_panos_candidate",
           "args": {
-            "device": "panosvm"
+            "device": "<HOSTNAME-2>"
           }
         }
       ]
@@ -323,13 +323,13 @@
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system services dns name-server 1.1.1.2"
+                  "text": "set system services dns name-server <IP-3>"
                 }
               },
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system services dns name-server 1.0.0.2"
+                  "text": "set system services dns name-server <IP-4>"
                 }
               },
               {
@@ -339,13 +339,13 @@
                 }
               }
             ],
-            "device": "demo-srx"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "demo-srx"
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -371,17 +371,17 @@
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system ntp server 132.163.97.1 prefer"
+                  "text": "set system ntp server <IP-1> prefer"
                 }
               },
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system ntp server 128.138.140.44"
+                  "text": "set system ntp server <IP-2>"
                 }
               }
             ],
-            "device": "demo-srx"
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -396,20 +396,20 @@
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "current-fingerprint-here",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system services dns server 1.1.1.2"
+                  "text": "set system services dns server <IP-3>"
                 },
                 "type": "object"
               },
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system services dns server 1.0.0.2"
+                  "text": "set system services dns server <IP-4>"
                 },
                 "type": "object"
               }
@@ -419,7 +419,7 @@
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "demo-srx"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
@@ -428,23 +428,23 @@
             "actions": [
               {
                 "action": "set",
-                "element": "1.1.1.2",
+                "element": "<IP-3>",
                 "xpath": "/config/devices/entry/vsys/entry[@name='vsys1']/system/settings/dns-server"
               },
               {
                 "action": "set",
-                "element": "1.0.0.2",
+                "element": "<IP-4>",
                 "xpath": "/config/devices/entry/vsys/entry[@name='vsys1']/system/settings/dns-server"
               }
             ],
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "expected_candidate_fingerprint": "current-fingerprint-here"
           }
         },
         {
           "tool": "diff_panos_candidate",
           "args": {
-            "device": "panosvm"
+            "device": "<HOSTNAME-2>"
           }
         }
       ]
@@ -467,7 +467,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "security address-book"
           }
         }
@@ -483,7 +483,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone trust to-zone untrust"
           }
         }
@@ -499,14 +499,14 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "xpath": "/config/address/entry"
           }
         },
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "xpath": "/config/rules/entry"
           }
         }

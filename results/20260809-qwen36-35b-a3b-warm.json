@@ -80,7 +80,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "xpath": "/config/devices/entry/vsys/entry/rulebase/security/rules"
           }
         }
@@ -120,7 +120,7 @@
         {
           "tool": "diff_panos_candidate",
           "args": {
-            "device": "panosvm"
+            "device": "<HOSTNAME-2>"
           }
         }
       ]
@@ -143,7 +143,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "xpath": "/config/devices/entry/vsys/entry/ntp"
           }
         }
@@ -167,7 +167,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "xpath": "/config/devices/entry/vsys/entry/ntp"
           }
         }
@@ -183,7 +183,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "xpath": "/config/devices/entry/vsys/entry/address/object"
           }
         }
@@ -207,7 +207,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "xpath": "/config/devices/entry/vsys/entry/address"
           }
         }

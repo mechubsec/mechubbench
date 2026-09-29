@@ -16,7 +16,7 @@
         {
           "tool": "execute_junos_command",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "command": "show ntp status"
           }
         }
@@ -32,19 +32,19 @@
         {
           "tool": "gather_device_facts",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "get_junos_candidate_fingerprint",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "execute_junos_command",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "command": "show system commit | last 5"
           }
         },
@@ -52,13 +52,13 @@
           "tool": "get_junos_config",
           "args": {
             "config_path": "security policies",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
@@ -66,13 +66,13 @@
           "tool": "get_junos_config",
           "args": {
             "config_path": "security",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "execute_junos_command",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "command": "show security policies counters | head 30"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
@@ -93,7 +93,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-br01",
+            "device": "<HOSTNAME-2>",
             "config_path": "system"
           },
           "tool_error": "Tool execution failed: netconf error: transport error: connection failed: SSH connect to 198.51.100.228:22 failed: No route to host (os error 113)"
@@ -101,14 +101,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-br02",
+            "device": "<HOSTNAME-3>",
             "config_path": "system"
           },
           "tool_error": "Tool execution failed: netconf error: transport error: connection failed: SSH connect to 198.51.100.229:22 failed: No route to host (os error 113)"
@@ -138,22 +138,22 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system services"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system"
           }
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "system {\n    name-server 1.1.1.2;\n    name-server 1.0.0.2;\n}",
+            "device": "<HOSTNAME-1>",
+            "config_text": "system {\n    name-server <IP-1>;\n    name-server <IP-2>;\n}",
             "config_format": "set"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] unknown command"
@@ -161,27 +161,27 @@
         {
           "tool": "execute_junos_command",
           "args": {
-            "device": "vsrx-ci",
-            "command": "load set system name-server 1.1.1.2"
+            "device": "<HOSTNAME-1>",
+            "command": "load set system name-server <IP-1>"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
         },
         {
           "tool": "get_junos_candidate_fingerprint",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "sha256:59ea5a837740af71a30149236122a8c9f0547151cd42a5bf511308df333d73b4",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "system {\n    name-server 1.1.1.2;\n    name-server 1.0.0.2;\n}"
+                  "text": "system {\n    name-server <IP-1>;\n    name-server <IP-2>;\n}"
                 }
               }
             ]
@@ -190,8 +190,8 @@
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "system {\n    name-server 1.1.1.2;\n    name-server 1.0.0.2;\n}",
+            "device": "<HOSTNAME-1>",
+            "config_text": "system {\n    name-server <IP-1>;\n    name-server <IP-2>;\n}",
             "config_format": "text"
           }
         }
@@ -207,26 +207,26 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system ntp"
           }
         },
         {
           "tool": "get_junos_candidate_fingerprint",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "sha256:e31a21f0e56e5deaf470bdee33667db21e4cdda292405798c702603514d50b03",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system ntp server 132.163.97.1\nset system ntp server 128.138.140.44"
+                  "text": "set system ntp server <IP-3>\nset system ntp server <IP-4>"
                 }
               }
             ]
@@ -235,7 +235,7 @@
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
@@ -243,14 +243,14 @@
           "tool": "get_junos_change_set_status",
           "args": {
             "change_set_id": "b39fffe90e5e6ce77cd7078fc0680a70eae95ac47742555166d2052eeccc2120",
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "set system ntp server 132.163.97.1\nset system ntp server 128.138.140.44",
+            "device": "<HOSTNAME-1>",
+            "config_text": "set system ntp server <IP-3>\nset system ntp server <IP-4>",
             "config_format": "set"
           }
         }
@@ -266,20 +266,20 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies"
           }
         },
         {
           "tool": "get_junos_candidate_fingerprint",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "sha256:801a91e27011cda0a5dcea068535c1c7597525edef39d0fcef586463666c7e12",
             "actions": [
               {
@@ -303,7 +303,7 @@
         {
           "tool": "rollback_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0,
             "commit": false
           }
@@ -311,13 +311,13 @@
         {
           "tool": "get_junos_candidate_fingerprint",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "execute_junos_command",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "command": "show system commit | count 10"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
@@ -325,7 +325,7 @@
         {
           "tool": "execute_junos_command",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "command": "show system commit | last 10"
           }
         }
@@ -334,14 +334,14 @@
     {
       "id": "standardize-junos-dns-baseline",
       "pass": false,
-      "reason": "staged_diff missing required: 1.1.1.2",
+      "reason": "staged_diff missing required: <IP-1>",
       "started": "2026-08-11T18:38:19.925267+00:00",
       "finished": "2026-08-11T18:39:14.671873+00:00",
       "transcript": [
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system name-service dns"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
@@ -349,7 +349,7 @@
         {
           "tool": "execute_junos_command",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "command": "show system name-service dns"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <command>"
@@ -357,26 +357,26 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system"
           }
         },
         {
           "tool": "get_junos_candidate_fingerprint",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "sha256:ccb5fcf417f088fb719fed72921080eefc9d1b541c9746369aca12b25fde2140",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "delete system name-service dns name-server 8.8.8.8\ndelete system name-service dns name-server 8.8.4.4\nset system name-service dns search-domain mechub.org"
+                  "text": "delete system name-service dns name-server <IP-5>\ndelete system name-service dns name-server <IP-6>\nset system name-service dns search-domain mechub.org"
                 }
               }
             ]
@@ -385,7 +385,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system name-service dns"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
@@ -393,22 +393,22 @@
         {
           "tool": "rollback_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "version": 0
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system"
           }
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "delete system name-service dns name-server 8.8.8.8;\ndelete system name-service dns name-server 8.8.4.4;\nset system name-service dns search-domain mechub.org;",
+            "device": "<HOSTNAME-1>",
+            "config_text": "delete system name-service dns name-server <IP-5>;\ndelete system name-service dns name-server <IP-6>;\nset system name-service dns search-domain mechub.org;",
             "config_format": "set"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error"
@@ -425,15 +425,15 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system ntp"
           }
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "system {\n    ntp {\n        server 132.163.97.1;\n        server 128.138.140.44;\n    }\n}",
+            "device": "<HOSTNAME-1>",
+            "config_text": "system {\n    ntp {\n        server <IP-3>;\n        server <IP-4>;\n    }\n}",
             "config_format": "set"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] unknown command"
@@ -441,17 +441,17 @@
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "delete system ntp server 129.6.15.28;\ndelete system ntp server 129.6.15.29;\ndelete system ntp server 129.6.15.30;\ndelete system ntp server 192.0.2.10;\ndelete system ntp server 192.0.2.11;\nset system ntp server 132.163.97.1;\nset system ntp server 128.138.140.44;",
+            "device": "<HOSTNAME-1>",
+            "config_text": "delete system ntp server <IP-7>;\ndelete system ntp server <IP-8>;\ndelete system ntp server <IP-9>;\ndelete system ntp server 192.0.2.10;\ndelete system ntp server 192.0.2.11;\nset system ntp server <IP-3>;\nset system ntp server <IP-4>;",
             "config_format": "set"
           },
-          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: 129.6.15.28;"
+          "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] invalid ip address or hostname: <HOSTNAME-4>"
         },
         {
           "tool": "commit_check_config",
           "args": {
-            "device": "vsrx-ci",
-            "config_text": "delete system ntp server 129.6.15.28\ndelete system ntp server 129.6.15.29\ndelete system ntp server 129.6.15.30\ndelete system ntp server 192.0.2.10\ndelete system ntp server 192.0.2.11\nset system ntp server 132.163.97.1\nset system ntp server 128.138.140.44",
+            "device": "<HOSTNAME-1>",
+            "config_text": "delete system ntp server <IP-7>\ndelete system ntp server <IP-8>\ndelete system ntp server <IP-9>\ndelete system ntp server 192.0.2.10\ndelete system ntp server 192.0.2.11\nset system ntp server <IP-3>\nset system ntp server <IP-4>",
             "config_format": "set"
           }
         }
@@ -467,14 +467,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security address-book addresses"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security"
           }
         }
@@ -490,7 +490,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone trust to-zone untrust policy"
           },
           "tool_error": "Tool execution failed: netconf error: RPC error: server error: [OperationFailed] syntax error, expecting <identifier>"
@@ -498,7 +498,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies"
           }
         }
@@ -507,6 +507,6 @@
   ],
   "mode": "agentic",
   "devices_touched": [
-    "vsrx-ci"
+    "<HOSTNAME-1>"
   ]
 }

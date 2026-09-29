@@ -16,14 +16,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system ntp"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system",
             "max_lines": 200
           }
@@ -40,7 +40,7 @@
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -55,21 +55,21 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "source-device",
+            "device": "<HOSTNAME-2>",
             "config_path": "system"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "target-device",
+            "device": "<HOSTNAME-3>",
             "config_path": "system"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "source-device"
+            "device": "<HOSTNAME-2>"
           }
         }
       ]
@@ -92,14 +92,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system name-server"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system"
           }
         }
@@ -115,14 +115,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system ntp"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system",
             "max_lines": 80
           }
@@ -130,13 +130,13 @@
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system ntp server 132.163.97.1\nset system ntp server 128.138.140.44"
+                  "text": "set system ntp server <IP-1>\nset system ntp server <IP-2>"
                 }
               }
             ]
@@ -145,20 +145,20 @@
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "max_lines": 5
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "max_lines": 200
           }
         }
@@ -174,21 +174,21 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "timeout": 15
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "",
             "actions": [
               {
@@ -203,7 +203,7 @@
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         }
       ]
@@ -219,48 +219,48 @@
     {
       "id": "standardize-junos-dns-baseline",
       "pass": false,
-      "reason": "staged_diff missing required: 1.1.1.2",
+      "reason": "staged_diff missing required: <IP-3>",
       "started": "2026-08-10T22:42:17.361826+00:00",
       "finished": "2026-08-10T22:43:59.986950+00:00",
       "transcript": [
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system name-server system domain-search"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system name-server"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system domain-search"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system domain-name"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "*",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "delete system name-server\ndelete system domain-search\ndelete system domain-name\nset system name-server 1.1.1.2\nset system name-server 1.0.0.2\nset system domain-search mechub.org"
+                  "text": "delete system name-server\ndelete system domain-search\ndelete system domain-name\n<DOMAIN-1> system name-server <IP-3>\nset system name-server <IP-4>\nset system domain-search mechub.org"
                 }
               }
             ]
@@ -269,25 +269,25 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "delete system name-server\ndelete system domain-search\ndelete system domain-name\nset system name-server 1.1.1.2\nset system name-server 1.0.0.2\nset system domain-search mechub.org"
+                  "text": "delete system name-server\ndelete system domain-search\ndelete system domain-name\n<DOMAIN-1> system name-server <IP-3>\nset system name-server <IP-4>\nset system domain-search mechub.org"
                 }
               }
             ]
@@ -305,20 +305,20 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system ntp"
           }
         },
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "current",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "delete system ntp server 129.6.15.28;\ndelete system ntp server 129.6.15.29;\ndelete system ntp server 129.6.15.30;\nset system ntp server 132.163.97.1;\nset system ntp server 128.138.140.44;"
+                  "text": "delete system ntp server <IP-5>;\ndelete system ntp server <IP-6>;\ndelete system ntp server <IP-7>;\nset system ntp server <IP-1>;\nset system ntp server <IP-2>;"
                 }
               }
             ]
@@ -327,13 +327,13 @@
         {
           "tool": "junos_config_diff",
           "args": {
-            "device": "vsrx-ci"
+            "device": "<HOSTNAME-1>"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "system ntp",
             "timeout": 30
           }
@@ -341,13 +341,13 @@
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "delete system ntp server 129.6.15.28;\ndelete system ntp server 129.6.15.29;\ndelete system ntp server 129.6.15.30;\nset system ntp server 132.163.97.1;\nset system ntp server 128.138.140.44;"
+                  "text": "delete system ntp server <IP-5>;\ndelete system ntp server <IP-6>;\ndelete system ntp server <IP-7>;\nset system ntp server <IP-1>;\nset system ntp server <IP-2>;"
                 }
               }
             ]
@@ -356,7 +356,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "timeout": 30
           }
         }
@@ -365,14 +365,14 @@
     {
       "id": "tighten-junos-duplicate-objects",
       "pass": false,
-      "reason": "report missing keywords: ['10.10.10.5', 'server-a', 'server-b']",
+      "reason": "report missing keywords: ['<IP-8>', 'server-a', 'server-b']",
       "started": "2026-08-10T22:45:28.072363+00:00",
       "finished": "2026-08-10T22:46:22.026341+00:00",
       "transcript": [
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies from-zone",
             "max_bytes": 200000
           }
@@ -380,14 +380,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "max_bytes": 200000
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security address-book",
             "max_bytes": 200000
           }
@@ -395,7 +395,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security",
             "max_bytes": 200000
           }
@@ -403,7 +403,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security address-book global",
             "max_bytes": 50000
           }
@@ -420,7 +420,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "vsrx-ci",
+            "device": "<HOSTNAME-1>",
             "config_path": "security policies"
           }
         }
@@ -429,6 +429,6 @@
   ],
   "mode": "agentic",
   "devices_touched": [
-    "vsrx-ci"
+    "<HOSTNAME-1>"
   ]
 }

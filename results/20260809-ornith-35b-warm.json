@@ -16,7 +16,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "system ntp"
           }
         }
@@ -72,7 +72,7 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "system name-server"
           }
         }
@@ -96,7 +96,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "xpath": "/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/security/policies"
           }
         }
@@ -112,7 +112,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "xpath": "/config/device/system/dns-setting"
           }
         }
@@ -144,7 +144,7 @@
         {
           "tool": "diff_panos_candidate",
           "args": {
-            "device": "panosvm"
+            "device": "<HOSTNAME-2>"
           }
         }
       ]
@@ -159,14 +159,14 @@
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "system name-server"
           }
         },
         {
           "tool": "get_junos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "config_path": "system domain-search"
           }
         }
@@ -182,7 +182,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "xpath": "/config/device/system/ntp"
           }
         }
@@ -198,13 +198,13 @@
         {
           "tool": "create_junos_change_set",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "expected_fingerprint": "placeholder",
             "actions": [
               {
                 "payload": {
                   "format": "set",
-                  "text": "set system name-server 1.1.1.2\nset system name-server 1.0.0.2"
+                  "text": "set system name-server <IP-1>\nset system name-server <IP-2>"
                 }
               }
             ]
@@ -213,18 +213,18 @@
         {
           "tool": "create_panos_change_set",
           "args": {
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "expected_candidate_fingerprint": "placeholder",
             "actions": [
               {
                 "action": "set",
-                "element": "<dns><primary>1.1.1.2</primary></dns>",
-                "xpath": "/config/network/dns-server/entry[@name='1.1.1.2']"
+                "element": "<dns><primary><IP-1></primary></dns>",
+                "xpath": "/config/network/dns-server/entry[@name='<IP-1>']"
               },
               {
                 "action": "set",
-                "element": "<dns><primary>1.0.0.2</primary></dns>",
-                "xpath": "/config/network/dns-server/entry[@name='1.0.0.2']"
+                "element": "<dns><primary><IP-2></primary></dns>",
+                "xpath": "/config/network/dns-server/entry[@name='<IP-2>']"
               }
             ]
           }
@@ -241,7 +241,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "panosvm",
+            "device": "<HOSTNAME-2>",
             "xpath": "/config/device/system/ntp"
           }
         }
@@ -257,7 +257,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "xpath": "/config/devices/entry/vsys/entry/address"
           }
         }
@@ -273,7 +273,7 @@
         {
           "tool": "get_panos_config",
           "args": {
-            "device": "demo-srx",
+            "device": "<HOSTNAME-1>",
             "xpath": "/config/devices/entry[@name='localhost.localdomain']/vsys/entry[@name='vsys1']/security/policyset/security-policy"
           }
         }
