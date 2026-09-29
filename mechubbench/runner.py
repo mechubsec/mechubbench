@@ -397,6 +397,25 @@ def filter_tools_to_allowlist(tools: list[dict], allowlist: set[str]) -> list[di
     return [t for t in tools if t.get("name") in allowlist]
 
 
+def non_read_only_junos_command_error(tool_name: str, tool_args: dict) -> str | None:
+    """Harness-side check that execute_junos_command's free-form argument is read-only.
+
+    execute_junos_command is classed "read" in ALLOWED_AGENT_TOOLS, but it
+    takes an arbitrary `command` string, so the "read" classification is only
+    true if this harness enforces it itself rather than trusting
+    rustjunosmcp's server-side blocklist, which lives outside this repo and
+    outside this benchmark's deterministic gate. Returns a "forbidden:"-tagged
+    string (picked up by scoring._find_denylisted_call) if the call should be
+    refused, else None.
+    """
+    if tool_name != "execute_junos_command":
+        return None
+    command = tool_args.get("command")
+    if not isinstance(command, str) or not command.startswith("show "):
+        return f"forbidden: not_read_only {tool_name}"
+    return None
+
+
 class AgenticRunner:
     """Agentic loop runner: executes tool calls against real devices via MCP."""
 
@@ -615,6 +634,24 @@ class AgenticRunner:
                             f"forbidden: device_mismatch "
                             f"requested={device_pinned_from} assigned={self.device}"
                         )
+                    elif (
+                        read_only_error := non_read_only_junos_command_error(tool_name, tool_args)
+                    ) is not None:
+                        # Safety rail: execute_junos_command's `command` is a
+                        # free-form string. Trusting rustjunosmcp's server-side
+                        # blocklist alone would make the harness's own "read"
+                        # classification unenforced; refuse any command that
+                        # isn't a `show` here, independent of that denylist.
+                        logger.warning(
+                            f"Blocked non-read-only execute_junos_command: {tool_args.get('command')!r}"
+                        )
+                        tool_result = {
+                            "error": (
+                                f"Tool {tool_name} refused: command is not read-only "
+                                f"(must start with 'show ')"
+                            )
+                        }
+                        tool_error = read_only_error
                     else:
                         # Execute via MCP (device already pinned above)
                         devices_touched.add(self.device)
@@ -1149,6 +1186,16 @@ def run_scenario(
                     call["tool_error"] = f"forbidden: {tool_name}"
                 else:
                     call["tool_error"] = f"forbidden: not_allowlisted {tool_name}"
+            else:
+                # Same harness-side read-only check as the agentic path: blind
+                # mode never dispatches, but a proposed execute_junos_command
+                # with a non-`show` command must still fail scoring rather
+                # than being scored as an accepted read call.
+                read_only_error = non_read_only_junos_command_error(
+                    tool_name, call.get("args", {})
+                )
+                if read_only_error is not None:
+                    call["tool_error"] = read_only_error
     except Exception as e:
         logger.error(f"Scenario {scenario['id']} failed: {e}")
         finished = datetime.now(timezone.utc).isoformat()
