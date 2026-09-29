@@ -86,9 +86,16 @@ def _keyword_to_pattern(keyword: str) -> str:
     return "[-_]".join(re.escape(part) for part in keyword.split("-"))
 
 
-# Matches keyword-value pairs across vendor CLI syntax (`community FAKEval`),
-# JSON text (`"community": "FAKEval"`), key=value syntax (`community=FAKEval`),
-# and the `_`/`-` separator variants of multi-word keywords (`pre_shared_key`).
+# Matches keyword-value pairs across vendor CLI syntax (`community` then a
+# bare value, e.g. `FAKEval`), JSON text (`"community": "FAKEval"`), key=value
+# syntax (`community`=`FAKEval`), and the `_`/`-` separator variants of
+# multi-word keywords (`pre_shared_key`).
+#
+# The examples above are deliberately split across separate backtick spans
+# instead of one contiguous keyword-separator-value span: a contiguous span
+# is exactly the shape this rule matches, and gitleaks would flag this
+# comment as a secret outside tests/, where no allowlist covers it (see
+# .gitleaks.toml).
 # The keyword itself may be bare or quoted (JSON keys); the value may be
 # double- or single-quoted, bare, separated by whitespace, a colon, or an
 # equals sign. An optional Junos value-format word (`ascii-text`,

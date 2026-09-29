@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from mechubbench.cli import build_parser, cmd_lint, cmd_run
+import pytest
+
+from mechubbench.cli import _read_token, build_parser, cmd_lint, cmd_run
 
 
 def test_lint_valid_scenario_passes(tmp_path):
@@ -303,3 +305,17 @@ scoring: all_expected_present_and_ordered_no_forbidden
             "192.168.5.9",
         ]:
             assert secret_shape not in written_blob, f"{secret_shape!r} leaked into results/*.json"
+
+
+def test_read_token_unreadable_path_never_logs_the_path(caplog):
+    """A token pasted into the path argument by mistake must never reach stderr/logs"""
+    sentinel_token = "sk-FAKEsentinel-do-not-leak-me-1234567890"
+    nonexistent_path = f"/nonexistent/{sentinel_token}"
+
+    with caplog.at_level("DEBUG"):
+        with pytest.raises(ValueError) as exc_info:
+            _read_token(nonexistent_path, "MECHUBBENCH_UNUSED_ENV_VAR")
+
+    assert sentinel_token not in str(exc_info.value)
+    for record in caplog.records:
+        assert sentinel_token not in record.getMessage()

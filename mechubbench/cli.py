@@ -31,12 +31,21 @@ def _read_token(token_file: str | None, env_var: str) -> str | None:
         The token string, or None if neither source provided one
 
     Raises:
-        ValueError: If token_file is given but empty
+        ValueError: If token_file is given but empty, or cannot be read
+
+    Note:
+        token_file is attacker-controllable (a pasted token could end up in
+        the path argument by mistake); the error path must never echo it to
+        logs or exception messages.
     """
     if token_file:
-        token = Path(token_file).read_text().strip()
+        try:
+            token = Path(token_file).read_text().strip()
+        except OSError:
+            logger.error("Failed to read token file")
+            raise ValueError("Failed to read token file") from None
         if not token:
-            raise ValueError(f"Token file is empty: {token_file}")
+            raise ValueError("Token file is empty")
         return token
     return os.environ.get(env_var)
 

@@ -64,14 +64,22 @@ secretGroup = 2
 path = '''results/.*\.json$'''
 tags = ["vendor", "secret", "results"]
 
-# The rule regexes above are literal strings that match themselves, and this
-# file documents secret shapes with fabricated examples in commit messages
-# and tests. Without this, the repo's own config/test fixtures would flag.
-[allowlist]
-description = "This repo's own gitleaks config, and fabricated FAKE-prefixed test fixtures, must not self-flag"
+# The rule regexes above are literal strings that match themselves, so this
+# file's own body would otherwise self-flag.
+[[allowlists]]
+description = "This repo's own gitleaks config documents secret shapes as literal regexes"
 paths = [
   '''(^|/)\.gitleaks\.toml$''',
 ]
+
+# Fabricated FAKE-prefixed test fixtures must not self-flag, but only inside
+# tests/ - a `FAKE`-tagged secret anywhere else in the tree still gets caught.
+[[allowlists]]
+description = "Fabricated FAKE-prefixed secret fixtures under tests/ must not self-flag"
+condition = "AND"
+paths = [
+  '''^tests/''',
+]
 regexes = [
-  '''(?i)FAKE''',
+  '''FAKE''',
 ]
