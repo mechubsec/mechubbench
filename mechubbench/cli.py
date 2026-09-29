@@ -223,9 +223,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
 
     # Write manifest (redacted: model tool arguments are saved verbatim
-    # in-memory for scoring, but secret-shaped values never reach disk)
+    # in-memory for scoring, but secret-shaped and identifying values never
+    # reach disk). allowed_literals is the union of every loaded scenario's
+    # expected_literals, so a value a scorer depends on stays visible.
+    allowed_literals: set[str] = set()
+    for scenario in scenarios:
+        allowed_literals.update(scenario.get("expected_literals") or [])
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    redacted_manifest = redact.redact_manifest(manifest)
+    redacted_manifest = redact.redact_manifest(
+        manifest, allowed_literals=allowed_literals
+    )
     output_path.write_text(json.dumps(redacted_manifest, indent=2))
     logger.info(f"Manifest written to {output_path}")
 

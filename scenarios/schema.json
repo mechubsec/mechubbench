@@ -113,6 +113,13 @@
     "domain": {
       "type": "string",
       "description": "Config domain for smart truncation (e.g., 'system ntp', 'security policies')"
+    },
+    "expected_literals": {
+      "type": "array",
+      "description": "IP literals (bare addresses or CIDR ranges) a scorer depends on seeing, so mechubbench.redact's allowlist-shaped IP masking must leave them unmasked in the committed results/*.json",
+      "items": {
+        "type": "string"
+      }
     }
   }
 }
