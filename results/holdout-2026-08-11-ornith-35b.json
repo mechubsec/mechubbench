@@ -280,7 +280,7 @@
         {
           "tool": "get_device_list",
           "args": {},
-          "tool_error": "HTTP error: Client error '403 Forbidden' for url 'http://198.51.100.194:30031/mcp'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403"
+          "tool_error": "HTTP error: Client error '403 Forbidden' for url 'http://198.51.100.10:30031/mcp'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403"
         },
         {
           "tool": "get_router_list",

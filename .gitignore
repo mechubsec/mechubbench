@@ -52,3 +52,11 @@ manifests/
 .env.*-token
 .env.token.*
 *.token
+
+# Raw benchmark output. Result manifests contain device tool output (configs,
+# hashes, $9$ secrets) captured from lab devices; a raw vsrx-ci run was
+# committed once already (da6a9b3). Keep new raw runs out of git. Publish a
+# result only after redaction (MEC-192/193), via `git add -f` on the redacted
+# file. Summaries (*.md) stay trackable.
+results/*.json
+results/**/*.json
