@@ -82,6 +82,19 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     logger.info(f"Loaded {len(scenarios)} scenario(s)")
 
+    # Fail fast on a scenario declaring a too-wide expected_literals
+    # exemption (F4-7), rather than running the whole benchmark and only
+    # discovering the redaction config error when writing the manifest.
+    for scenario in scenarios:
+        for literal in scenario.get("expected_literals") or []:
+            try:
+                redact.validate_expected_literal(literal)
+            except ValueError as e:
+                logger.error(
+                    f"Scenario '{scenario.get('id', 'unknown')}': {e}"
+                )
+                return 1
+
     logger.info(f"Loading tools from {tools_path}")
     tools = core.load_tools(tools_path)
     logger.info(f"Loaded {len(tools)} tool(s)")
@@ -223,9 +236,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
 
     # Write manifest (redacted: model tool arguments are saved verbatim
-    # in-memory for scoring, but secret-shaped values never reach disk)
+    # in-memory for scoring, but secret-shaped and identifying values never
+    # reach disk). allowed_literals is the union of every loaded scenario's
+    # expected_literals, so a value a scorer depends on stays visible.
+    allowed_literals: set[str] = set()
+    for scenario in scenarios:
+        allowed_literals.update(scenario.get("expected_literals") or [])
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    redacted_manifest = redact.redact_manifest(manifest)
+    redacted_manifest = redact.redact_manifest(
+        manifest, allowed_literals=allowed_literals
+    )
     output_path.write_text(json.dumps(redacted_manifest, indent=2))
     logger.info(f"Manifest written to {output_path}")
 

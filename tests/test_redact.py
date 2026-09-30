@@ -4,6 +4,10 @@ All secret shapes below are fabricated for this test file; none are derived
 from real device output or real crypt/SSH-key material.
 """
 
+import json
+
+import pytest
+
 from mechubbench import redact
 
 
@@ -37,7 +41,7 @@ def test_rfc1918_address_redacted():
     text = "syslog host 192.168.50.150 port 514"
     result = redact._redact_text(text)
     assert "192.168.50.150" not in result
-    assert redact.REDACTED_IP in result
+    assert "<IP-1>" in result
 
 
 def test_rfc1918_ranges_all_redacted():
@@ -46,11 +50,232 @@ def test_rfc1918_ranges_all_redacted():
         assert ip not in result, f"{ip} should have been redacted"
 
 
-def test_public_address_not_redacted():
-    """Only RFC1918 ranges are private; public IPs are left alone."""
+def test_public_ipv4_address_redacted():
+    """F4: inverted model - public IPv4 is masked same as private, since
+    for a real SOC user a public address is just as identifying."""
     text = "ntp server 129.6.15.28"
     result = redact._redact_text(text)
-    assert "129.6.15.28" in result
+    assert "129.6.15.28" not in result
+    assert "<IP-1>" in result
+
+
+def test_ipv4_cidr_redacted():
+    text = "route 198.18.4.0/24 next-hop 10.0.0.1"
+    result = redact._redact_text(text)
+    assert "198.18.4.0" not in result
+    assert result == "route <IP-1>/24 next-hop <IP-2>"
+
+
+def test_ipv6_full_form_redacted():
+    text = "address 2606:4700:4700::1111 on interface ge-0/0/0"
+    result = redact._redact_text(text)
+    assert "2606:4700:4700::1111" not in result
+    assert "<IP-1>" in result
+
+
+def test_ipv6_compressed_form_redacted():
+    text = "set interfaces lo0 unit 0 family inet6 address fe80::1/64"
+    result = redact._redact_text(text)
+    assert "fe80::1" not in result
+    assert "<IP-1>/64" in result
+
+
+def test_ipv6_v4_mapped_form_redacted():
+    text = "peer ::ffff:129.6.15.28 unreachable"
+    result = redact._redact_text(text)
+    assert "129.6.15.28" not in result
+    assert "<IP-1>" in result
+
+
+def test_ipv6_cidr_redacted():
+    text = "aggregate route 2620:119:35::/48"
+    result = redact._redact_text(text)
+    assert "2620:119:35::" not in result
+    assert result == "aggregate route <IP-1>/48"
+
+
+def test_documentation_range_ipv4_not_redacted():
+    for ip in ["192.0.2.5", "198.51.100.10", "203.0.113.254"]:
+        result = redact._redact_text(f"ntp server {ip}")
+        assert ip in result, f"documentation-range {ip} should survive"
+
+
+def test_documentation_range_ipv6_not_redacted():
+    text = "peer 2001:db8::1 configured"
+    result = redact._redact_text(text)
+    assert "2001:db8::1" in result
+
+
+def test_loopback_addresses_not_redacted():
+    for ip in ["127.0.0.1", "::1"]:
+        result = redact._redact_text(f"listen on {ip}")
+        assert ip in result, f"loopback {ip} should survive"
+
+
+def test_scenario_declared_literal_survives_redact_manifest():
+    """A literal the scenario YAML declares via expected_literals must
+    survive so the committed manifest still shows what a scorer depends on,
+    even though it's a public/non-doc-range address that would otherwise be
+    masked."""
+    manifest = {
+        "results": [
+            {
+                "id": "discover-ntp",
+                "transcript": [
+                    {
+                        "tool": "get_junos_config",
+                        "args": {"device": "vsrx-ci"},
+                        "result": "ntp server 129.6.15.28",
+                    }
+                ],
+            }
+        ]
+    }
+    redacted = redact.redact_manifest(manifest, allowed_literals={"129.6.15.28"})
+    blob = json.dumps(redacted)
+    assert "129.6.15.28" in blob
+
+
+def test_ip_placeholder_stable_within_one_redact_manifest_call():
+    """The same address repeated across a manifest must resolve to the same
+    placeholder, so a human (or a scoring check) can tell two occurrences of
+    one address apart from an occurrence of a different address."""
+    manifest = {
+        "results": [
+            {
+                "id": "r1",
+                "transcript": [
+                    {"tool": "t1", "args": {"host": "129.6.15.28"}},
+                    {"tool": "t2", "args": {"note": "reused 129.6.15.28 again"}},
+                ],
+            }
+        ]
+    }
+    redacted = redact.redact_manifest(manifest)
+    blob = json.dumps(redacted)
+    assert blob.count("<IP-1>") == 2
+    assert "<IP-2>" not in blob
+
+
+def test_host_name_keyword_redacted_text_and_dict_and_xml():
+    text_result = redact._redact_text("set system host-name FAKErouter01")
+    assert "FAKErouter01" not in text_result
+    assert "<HOSTNAME-1>" in text_result
+
+    dict_result = redact._redact_obj({"host-name": "FAKErouter01"})
+    assert dict_result == {"host-name": "<HOSTNAME-1>"}
+
+    xml_result = redact._redact_text("<host-name>FAKErouter01</host-name>")
+    assert "FAKErouter01" not in xml_result
+    assert "<HOSTNAME-1>" in xml_result
+
+
+def test_serial_number_keyword_redacted_text_and_dict_and_xml():
+    text_result = redact._redact_text("serial-number FAKESN123456")
+    assert "FAKESN123456" not in text_result
+    assert "<SERIAL-1>" in text_result
+
+    dict_result = redact._redact_obj({"serial-number": "FAKESN123456"})
+    assert dict_result == {"serial-number": "<SERIAL-1>"}
+
+    xml_result = redact._redact_text("<serial-number>FAKESN123456</serial-number>")
+    assert "FAKESN123456" not in xml_result
+    assert "<SERIAL-1>" in xml_result
+
+
+def test_domain_name_keyword_redacted():
+    text_result = redact._redact_text("set system domain-name fakecorp.example")
+    assert "fakecorp.example" not in text_result
+    assert "<DOMAIN-1>" in text_result
+
+    dict_result = redact._redact_obj({"domain-name": "fakecorp.example"})
+    assert dict_result == {"domain-name": "<DOMAIN-1>"}
+
+
+def test_username_keyword_redacted_text_and_dict():
+    text_result = redact._redact_text('{"username": "sduser"}')
+    assert "sduser" not in text_result
+
+    dict_result = redact._redact_obj({"username": "sduser"})
+    assert dict_result == {"username": "<USER-1>"}
+
+
+def test_bare_user_dict_key_redacted():
+    dict_result = redact._redact_obj({"user": "sduser"})
+    assert dict_result == {"user": "<USER-1>"}
+
+
+def test_login_user_phrase_redacted_but_bare_user_word_left_alone():
+    """F4: `login user <name>` (Junos CLI) is anchored specifically so
+    ordinary prose using the word "user" isn't swept up as an identifier."""
+    result = redact._redact_text(
+        "set system login user sduser class super-user authentication "
+        'encrypted-password "$6$FAKEsalt$FAKEhashdata12345"'
+    )
+    assert "sduser" not in result
+    assert "<USER-1>" in result
+
+    prose_result = redact._redact_text("the user requested a config change")
+    assert prose_result == "the user requested a config change"
+
+
+def test_public_ip_and_identifier_masked_in_json_in_string_shape():
+    """Same as the CLI/XML shapes above, but the value arrives as a JSON
+    string (e.g. a `| display json` tool response) rather than vendor CLI
+    text - the JSON detour in _redact_text must apply the same rules."""
+    text = json.dumps(
+        {
+            "configuration": {
+                "system": {
+                    "host-name": "FAKErouter01",
+                    "name-server": ["129.6.15.28"],
+                }
+            }
+        }
+    )
+    result = redact._redact_text(text)
+    assert "FAKErouter01" not in result
+    assert "129.6.15.28" not in result
+
+
+def test_public_ip_and_identifier_masked_in_dict_arg_shape():
+    obj = {
+        "tool": "gather_device_facts",
+        "args": {"host-name": "FAKErouter01", "management_ip": "129.6.15.28"},
+    }
+    result = redact._redact_obj(obj)
+    assert result["args"]["host-name"] == "<HOSTNAME-1>"
+    assert "129.6.15.28" not in json.dumps(result)
+
+
+def test_pem_private_key_block_redacted():
+    """MEC-39 close-out: a PEM private-key block under a non-secret key
+    (e.g. actions[].payload.text) must not survive verbatim - only
+    gitleaks' opt-in pre-commit hook caught this before, and that hook
+    doesn't run by default (see MEC-885)."""
+    pem = (
+        "-----BEGIN RSA PRIVATE KEY-----\n"
+        "FAKEbase64keymaterialAAAABBBBCCCCDDDDEEEEFFFF\n"
+        "FAKEbase64keymaterialGGGGHHHHIIIIJJJJKKKKLLLL\n"
+        "-----END RSA PRIVATE KEY-----"
+    )
+    text = f"tool output:\n{pem}\nmore output"
+    result = redact._redact_text(text)
+    assert "FAKEbase64keymaterial" not in result
+    assert "BEGIN RSA PRIVATE KEY" not in result
+    assert redact.REDACTED in result
+
+
+def test_bare_yescrypt_hash_redacted_without_keyword_anchor():
+    """MEC-39 close-out: a bare $y$ yescrypt hash (free text, error string,
+    or a model's own summary) must be redacted even with no
+    `encrypted-password` keyword anchoring it - _CRYPT_HASH_RE previously
+    only matched a single digit after the first `$` (\\$\\d\\$...)."""
+    text = "hash dump: $y$j9T$FAKEsaltvalue123$FAKEhashvaluepaddedabcdef1234567890"
+    result = redact._redact_text(text)
+    assert "$y$" not in result
+    assert "FAKEhashvaluepaddedabcdef1234567890" not in result
+    assert redact.REDACTED in result
 
 
 def test_pre_shared_key_redacted():
@@ -221,10 +446,10 @@ def test_dict_key_secret_redacted_case_and_underscore_insensitive():
     assert result == {"Encrypted_Password": redact.REDACTED}
 
 
-def test_non_secret_key_left_to_text_scanning():
-    obj = {"hostname": "vsrx-ci"}
+def test_non_secret_non_identifier_key_left_to_text_scanning():
+    obj = {"vendor": "junos"}
     result = redact._redact_obj(obj)
-    assert result == {"hostname": "vsrx-ci"}
+    assert result == {"vendor": "junos"}
 
 
 def test_dict_key_secret_redacted_nested_dict_value():
@@ -280,7 +505,7 @@ def test_large_config_blob_reduced_to_digest():
 
 
 def test_short_text_not_digested():
-    text = "set system host-name test"
+    text = "set system ntp boot-server test"
     result = redact._redact_text(text)
     assert result == text
 
@@ -491,3 +716,188 @@ def test_redact_manifest_from_synthetic_run_with_secret_shapes():
         "192.168.5.9",
     ]:
         assert secret_shape not in blob, f"{secret_shape!r} leaked into redacted manifest"
+
+
+# --- PR #8 review follow-up (Percy, F4-1 through F4-8) ------------------
+#
+# All values below are synthetic. Each test fails against 0d0db01 (the PR #8
+# head Percy reviewed) and passes after the fix it's named for.
+
+
+def test_ipv6_before_colon_separator_redacted():
+    """F4-1: an address immediately followed by ':' (the standard
+    `<addr>: <error>` shape of a tool_error) must still be masked. The old
+    _IPV6_RE's trailing `(?![:.\\w])` lookahead failed to fire next to
+    another ':', so this leaked whole."""
+    result = redact._redact_text("connect to 2001:470::9: timeout")
+    assert "2001:470::9" not in result
+    assert "<IP-1>" in result
+
+
+def test_ipv6_before_period_redacted():
+    """F4-1: same lookahead gap, end-of-sentence period instead of colon."""
+    result = redact._redact_text("peer is 2001:470:1f0b::7.")
+    assert "2001:470:1f0b::7" not in result
+    assert result == "peer is <IP-1>."
+
+
+def test_ipv6_after_colon_prefix_redacted():
+    """F4-1: the symmetric leading-side gap - `(?<![:.\\w])` also failed to
+    fire when the address is preceded by ':' (e.g. a `key:value` shape)."""
+    result = redact._redact_text("ip:2001:470::7")
+    assert "2001:470::7" not in result
+    assert result == "ip:<IP-1>"
+
+
+def test_ipv6_cidr_still_redacted_after_candidate_rewrite():
+    """Regression guard for the candidate+ipaddress-validate rewrite: a
+    trailing '::' before a CIDR suffix is valid zero-compression syntax, not
+    a separator to strip, and stripping it first (rather than trying the
+    full run against ipaddress first) turns a valid address into an invalid
+    one - this was caught while fixing F4-1, not part of Percy's review."""
+    result = redact._redact_text("aggregate route 2620:119:35::/48")
+    assert "2620:119:35::" not in result
+    assert result == "aggregate route <IP-1>/48"
+
+
+def test_hostname_bare_keyword_redacted_text_dict_xml():
+    """F4-2: `_keyword_to_pattern` required a literal '-' or '_' between
+    "host" and "name", so the bare concatenated form PAN-OS/Junos prose both
+    use ("Hostname:", "hostname=", "<hostname>") wasn't anchored in text or
+    XML at all - only the dict-key path (which normalizes separators away
+    before comparing) caught it."""
+    text_result = redact._redact_text("Hostname: FAKErouter01")
+    assert "FAKErouter01" not in text_result
+    assert "<HOSTNAME-1>" in text_result
+
+    kv_result = redact._redact_text("hostname=FAKErouter01 serial=FAKESN123456")
+    assert "FAKErouter01" not in kv_result
+    assert "FAKESN123456" not in kv_result
+
+    xml_result = redact._redact_text("<hostname>FAKErouter01</hostname>")
+    assert "FAKErouter01" not in xml_result
+    assert "<HOSTNAME-1>" in xml_result
+
+
+def test_panos_serial_and_devicename_xml_tags_redacted():
+    """F4-2: PAN-OS XML API responses use <serial> and <devicename>, not
+    Junos's <serial-number>/<host-name> - the acceptance criteria name
+    PAN-OS XML shapes explicitly."""
+    xml = "<system><devicename>pa-dc1</devicename><serial>0123456789AB</serial></system>"
+    result = redact._redact_text(xml)
+    assert "pa-dc1" not in result
+    assert "0123456789AB" not in result
+    assert "<HOSTNAME-1>" in result
+    assert "<SERIAL-1>" in result
+
+
+def test_truncated_pem_private_key_redacted():
+    """F4-3: a PEM block cut off mid-stream (model output or tool arguments
+    truncated before an END line) must still have its body redacted, not
+    just the addresses that happen to have a matching END line."""
+    pem = (
+        "-----BEGIN RSA PRIVATE KEY-----\n"
+        "FAKEbase64keymaterialAAAABBBBCCCCDDDDEEEEFFFF\n"
+        "FAKEbase64keymaterialGGGGHHHHIIII [truncated]"
+    )
+    result = redact._redact_text(pem)
+    assert "FAKEbase64keymaterial" not in result
+    assert "BEGIN RSA PRIVATE KEY" not in result
+    assert redact.REDACTED in result
+
+
+def test_device_identity_args_redacted_without_keyword():
+    """F4-4: args.device (and the runner's other DEVICE_ARG_KEYS: router,
+    router_name) are inventory names with no secret/identifier keyword
+    anchoring them elsewhere, and they're written verbatim on every real
+    run against a device."""
+    dict_result = redact._redact_obj({"device": "fw-edge01"})
+    assert dict_result == {"device": "<HOSTNAME-1>"}
+
+    for key in ("router", "router_name"):
+        result = redact._redact_obj({key: "fw-edge01"})
+        assert result == {key: "<HOSTNAME-1>"}
+
+
+def test_devices_touched_list_redacted_per_element():
+    """F4-4: the manifest's top-level devices_touched is a list of device
+    names, not a single string - masking must apply per element, not
+    collapse the whole list into one placeholder."""
+    result = redact._redact_obj({"devices_touched": ["fw-edge01", "fw-edge02"]})
+    assert result == {"devices_touched": ["<HOSTNAME-1>", "<HOSTNAME-2>"]}
+
+
+def test_device_identity_survives_when_declared_as_expected_literal():
+    """F4-4: a scenario can still declare a lab device name (e.g. vsrx-ci)
+    via expected_literals so it stays readable in the committed manifest,
+    the same mechanism used for IP literals a scorer depends on."""
+    manifest = {"args": {"device": "vsrx-ci"}, "devices_touched": ["vsrx-ci"]}
+    redacted = redact.redact_manifest(manifest, allowed_literals={"vsrx-ci"})
+    assert redacted == manifest
+    # Without the declared exemption, the same device name is masked - this
+    # also confirms "device"/"devices_touched" are identifier-anchored at
+    # all (see test_device_identity_args_redacted_without_keyword).
+    assert redact.redact_manifest(manifest) != manifest
+
+
+def test_dict_key_ip_shape_redacted():
+    """F4-5: vendor API responses (Mist, PAN-OS) are sometimes keyed by IP
+    or MAC-adjacent identifiers - a dict key holding a bare IP literal must
+    be masked the same as an IP appearing as a value."""
+    result = redact._redact_obj({"8.8.4.4": {"status": "up"}})
+    assert result == {"<IP-1>": {"status": "up"}}
+    assert "8.8.4.4" not in json.dumps(result)
+
+
+def test_ipv4_adjacent_to_underscore_redacted():
+    """F4-6: `\\b` treats '_' as a word character, so it never fires between
+    an identifier prefix and the address in shapes like `addr_<ip>` or an
+    interface name immediately followed by an address."""
+    assert "8.8.8.8" not in redact._redact_text("addr_8.8.8.8")
+    assert "100.64.1.9" not in redact._redact_text("ge-0/0/0_100.64.1.9")
+
+
+def test_expected_literals_rejects_network_wider_than_host():
+    """F4-7: expected_literals exempts specific values a scorer depends on,
+    not whole subnets - "0.0.0.0/0" (or "::/0") would turn off IP masking
+    entirely, which is exactly the exemption-widening this field must not
+    allow."""
+    with pytest.raises(ValueError):
+        redact.validate_expected_literal("0.0.0.0/0")
+    with pytest.raises(ValueError):
+        redact.validate_expected_literal("::/0")
+    with pytest.raises(ValueError):
+        redact.redact_manifest({"x": "unused"}, allowed_literals={"10.0.0.0/8"})
+
+
+def test_expected_literals_accepts_host_address_and_doc_subnet():
+    """F4-7: a single host (/32, /128) or a network fully inside the
+    documentation ranges is a legitimate expected_literals entry and must
+    not be rejected."""
+    redact.validate_expected_literal("129.6.15.28/32")
+    redact.validate_expected_literal("2001:470::7/128")
+    redact.validate_expected_literal("192.0.2.0/24")
+    redact.validate_expected_literal("129.6.15.28")
+
+
+def test_identifier_placeholder_stable_across_quoting():
+    """F4-8: the same value quoted and unquoted (`host-name "fw1"` vs.
+    `host-name fw1`, both valid Junos syntax) must resolve to the same
+    placeholder - the previous cache key included the literal quote
+    characters, splitting one value into two placeholders."""
+    manifest = {
+        "a": "host-name \"fw1\"",
+        "b": "host-name fw1",
+    }
+    redacted = redact.redact_manifest(manifest)
+    assert redacted["a"] == redacted["b"] == "host-name <HOSTNAME-1>"
+
+
+def test_ip_placeholder_stable_across_ipv6_compression_forms():
+    """F4-8: "2001:470::7" and "2001:470:0::7" are the same address spelled
+    two ways; the previous cache key was the literal matched text, so they
+    got different placeholders. Keying on the canonical str(addr) fixes
+    this the same way json.dumps compact re-serialization already does for
+    other shapes in this module."""
+    result = redact._redact_text("2001:470::7 and 2001:470:0::7")
+    assert result == "<IP-1> and <IP-1>"
