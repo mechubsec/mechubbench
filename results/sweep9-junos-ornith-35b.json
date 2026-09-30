@@ -96,7 +96,7 @@
             "device": "vsrx-br01",
             "config_path": "system"
           },
-          "tool_error": "Tool execution failed: netconf error: transport error: connection failed: SSH connect to 198.51.100.228:22 failed: No route to host (os error 113)"
+          "tool_error": "Tool execution failed: netconf error: transport error: connection failed: SSH connect to 198.51.100.28:22 failed: No route to host (os error 113)"
         },
         {
           "tool": "get_junos_config",
@@ -111,7 +111,7 @@
             "device": "vsrx-br02",
             "config_path": "system"
           },
-          "tool_error": "Tool execution failed: netconf error: transport error: connection failed: SSH connect to 198.51.100.229:22 failed: No route to host (os error 113)"
+          "tool_error": "Tool execution failed: netconf error: transport error: connection failed: SSH connect to 198.51.100.29:22 failed: No route to host (os error 113)"
         }
       ]
     },

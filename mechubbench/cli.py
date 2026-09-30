@@ -355,8 +355,8 @@ def main() -> None:
     )
     run_parser.add_argument(
         "--endpoint",
-        default="http://inference.example.com:11434/v1",
-        help="OpenAI-compatible endpoint URL (default: http://inference.example.com:11434/v1)",
+        default="http://mcp-infer.example.net:11434/v1",
+        help="OpenAI-compatible endpoint URL (default: http://mcp-infer.example.net:11434/v1)",
     )
     run_parser.add_argument(
         "--out",
@@ -377,8 +377,8 @@ def main() -> None:
     )
     run_parser.add_argument(
         "--mcp-endpoint",
-        default="http://198.51.100.194:30031/mcp",
-        help="MCP endpoint URL for agentic mode (default: http://198.51.100.194:30031/mcp)",
+        default="http://198.51.100.10:30031/mcp",
+        help="MCP endpoint URL for agentic mode (default: http://198.51.100.10:30031/mcp)",
     )
     run_parser.add_argument(
         "--mcp-token",
@@ -416,7 +416,7 @@ def main() -> None:
     export_parser.add_argument(
         "--mcp-endpoint",
         required=True,
-        help="MCP endpoint URL (e.g., http://198.51.100.194:30031/mcp)",
+        help="MCP endpoint URL (e.g., http://198.51.100.10:30031/mcp)",
     )
     export_parser.add_argument(
         "--mcp-token",
