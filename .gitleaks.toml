@@ -1,17 +1,13 @@
 title = "mechubbench gitleaks config"
 
 [extend]
-useDefault = true
+path = ".gitleaks-vendor.toml"
 
-# Vendor-specific secret shapes the default gitleaks ruleset does not cover.
-# These are the same shapes mechubbench.redact scrubs from results/*.json:
-# Junos crypt hashes, SSH keys, and vendor pre-shared/community secrets.
-[[rules]]
-id = "junos-type9-secret"
-description = "Junos $9$ (family 9) obfuscated secret"
-regex = '''\$9\$[^\s"'\\]{4,}'''
-tags = ["junos", "secret"]
-
+# Vendor-specific secret shapes the shared vendor ruleset (.gitleaks-vendor.toml)
+# does not cover, plus a couple of ids below that override the vendor shape with
+# a wider match. These are the same shapes mechubbench.redact scrubs from
+# results/*.json: Junos crypt hashes, SSH keys, and vendor pre-shared/community
+# secrets.
 [[rules]]
 id = "junos-crypt-secret"
 description = "Junos $1$/$5$/$6$ crypt secret, or a glibc/musl yescrypt $y$ hash (extra params$salt$hash segment vs the $1$/$5$/$6$ shape, so matched as its own alternative rather than folded into the same segment count)"
@@ -31,12 +27,6 @@ description = "Value following a known secret-carrying config keyword (pre-share
 regex = '''(?i)\b(pre[-_]shared[-_]key|psk|authentication[-_]key|authentication[-_]password|community|device[-_]id)\b(?:\s*[:=]\s*|\s+)(?:(?:ascii-text|hexadecimal|key)\s+)?("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']+)'''
 secretGroup = 2
 tags = ["vendor", "secret"]
-
-[[rules]]
-id = "panos-aq-obfuscated-secret"
-description = "PAN-OS '-AQ==' obfuscated secret (pre-shared keys, TOTP seeds, etc.), bare or inside a <pre-shared-key><key> XML element"
-regex = '''-AQ==[A-Za-z0-9+/=]{8,}'''
-tags = ["panos", "secret"]
 
 [[rules]]
 id = "ospf-md5-plaintext-key"
