@@ -397,6 +397,12 @@ def filter_tools_to_allowlist(tools: list[dict], allowlist: set[str]) -> list[di
     return [t for t in tools if t.get("name") in allowlist]
 
 
+# | segments after a `show ...` command that stay read-only. "display" must
+# additionally be followed by one of xml/json/set (checked separately below).
+_JUNOS_READ_ONLY_PIPE_WORDS = {"match", "except", "find", "count", "last", "no-more", "display"}
+_JUNOS_READ_ONLY_DISPLAY_MODES = {"xml", "json", "set"}
+
+
 def non_read_only_junos_command_error(tool_name: str, tool_args: dict) -> str | None:
     """Harness-side check that execute_junos_command's free-form argument is read-only.
 
@@ -407,12 +413,33 @@ def non_read_only_junos_command_error(tool_name: str, tool_args: dict) -> str | 
     outside this benchmark's deterministic gate. Returns a "forbidden:"-tagged
     string (picked up by scoring._find_denylisted_call) if the call should be
     refused, else None.
+
+    A leading `show ` is not sufficient: Junos CLI allows chaining further
+    commands after a newline or `;`, and `| save`/`| append`/`| tee` pipe
+    output to a file on the device. So beyond the `show ` prefix, this also
+    rejects control characters (CR/LF and friends), `;`, and any `|` segment
+    whose first word is not a read-only filter (match/except/find/count/
+    last/no-more/display, with display restricted to xml/json/set).
     """
     if tool_name != "execute_junos_command":
         return None
+    if not isinstance(tool_args, dict):
+        return "forbidden: invalid_args"
     command = tool_args.get("command")
     if not isinstance(command, str) or not command.startswith("show "):
         return f"forbidden: not_read_only {tool_name}"
+    if any(ord(ch) < 0x20 for ch in command) or ";" in command:
+        return f"forbidden: not_read_only {tool_name}"
+    for segment in command.split("|")[1:]:
+        words = segment.strip().split()
+        if not words:
+            return f"forbidden: not_read_only {tool_name}"
+        first = words[0].lower()
+        if first == "display":
+            if len(words) < 2 or words[1].lower() not in _JUNOS_READ_ONLY_DISPLAY_MODES:
+                return f"forbidden: not_read_only {tool_name}"
+        elif first not in _JUNOS_READ_ONLY_PIPE_WORDS:
+            return f"forbidden: not_read_only {tool_name}"
     return None
 
 

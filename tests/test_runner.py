@@ -2891,3 +2891,129 @@ class TestJunosCommandReadOnlyGate:
 
         mock_mcp.call_tool.assert_not_called()
         assert result["transcript"][0]["tool_error"].startswith("forbidden: not_read_only")
+
+    # MEC-1088/MEC-1401 Finding 1: a leading `show ` is not sufficient. Junos
+    # lets `| save`/`| append`/`| tee` write to the device filesystem, and
+    # a newline or `;` can chain a second, non-show command after it.
+    _BYPASS_COMMANDS = [
+        pytest.param("show configuration | save /var/tmp/x", id="pipe-save"),
+        pytest.param("show version\nrequest system reboot", id="newline-chained"),
+        pytest.param("show version; request system reboot", id="semicolon-chained"),
+    ]
+
+    @pytest.mark.parametrize("command", _BYPASS_COMMANDS)
+    def test_bypass_command_refused_not_dispatched_agentic(self, command):
+        scenario = {
+            "id": "test-bypass",
+            "vendor": "junos",
+            "prompt": "Do something",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = self._agentic_response(command)
+        mock_mcp = Mock()
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm, mcp_client=mock_mcp, device="test-device", max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", self._TOOLS)
+
+        mock_mcp.call_tool.assert_not_called()
+        assert result["transcript"][0]["tool_error"].startswith("forbidden: not_read_only")
+        assert result["pass"] is False
+
+    @pytest.mark.parametrize("command", _BYPASS_COMMANDS)
+    def test_bypass_command_refused_blind_mode(self, command):
+        scenario = {
+            "id": "test-bypass-blind",
+            "vendor": "junos",
+            "prompt": "Do something",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_client = Mock()
+        mock_client.complete_with_tools.return_value = {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {
+                            "name": "execute_junos_command",
+                            "arguments": json.dumps({"command": command}),
+                        },
+                    }]
+                },
+                "finish_reason": "tool_calls",
+            }]
+        }
+
+        result = runner.run_scenario(scenario, "test-model", self._TOOLS, mock_client)
+
+        assert result["transcript"][0]["tool_error"].startswith("forbidden: not_read_only")
+        assert result["pass"] is False
+
+    @pytest.mark.parametrize(
+        "allowed_command",
+        [
+            pytest.param("show interfaces terse | match ge-0", id="pipe-match"),
+            pytest.param("show configuration | display set", id="pipe-display-set"),
+            pytest.param("show log messages | last 50", id="pipe-last"),
+        ],
+    )
+    def test_read_only_pipe_still_dispatches_agentic(self, allowed_command):
+        """A `show` command piped through a read-only filter must still
+        dispatch; the fix must not reject legitimate read-only pipes."""
+        scenario = {
+            "id": "test-allowed-pipe",
+            "vendor": "junos",
+            "prompt": "Show something",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = self._agentic_response(allowed_command)
+        mock_mcp = Mock()
+        mock_mcp.call_tool.return_value = {"ok": True}
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm, mcp_client=mock_mcp, device="test-device", max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", self._TOOLS)
+
+        mock_mcp.call_tool.assert_called_once()
+        assert "tool_error" not in result["transcript"][0]
+
+    def test_non_dict_args_refused_not_raised_blind(self):
+        """MEC-1088 minor finding: non-dict tool args (e.g. a model that
+        emits a JSON list instead of an object) must score as forbidden
+        rather than crashing scenario scoring with an AttributeError."""
+        scenario = {
+            "id": "test-non-dict-args",
+            "vendor": "junos",
+            "prompt": "Do something",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_client = Mock()
+        mock_client.complete_with_tools.return_value = {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {"name": "execute_junos_command", "arguments": "[]"},
+                    }]
+                },
+                "finish_reason": "tool_calls",
+            }]
+        }
+
+        result = runner.run_scenario(scenario, "test-model", self._TOOLS, mock_client)
+
+        assert result["transcript"][0]["tool_error"] == "forbidden: invalid_args"
+        assert result["pass"] is False
+        assert not result["reason"].startswith("llm_error")
