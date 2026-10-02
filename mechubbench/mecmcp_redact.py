@@ -39,25 +39,67 @@ def pinned_tag() -> str:
 
 def _binary_path() -> Path:
     """Resolve the `mecmcp-redact` binary: an explicit override first, then
-    PATH, then the vendored build `scripts/vendor_mecmcp_redact.sh` produces.
+    the vendored build `scripts/vendor_mecmcp_redact.sh` produces, then
+    whatever is on PATH.
+
+    The vendored build is preferred over PATH (not the other way around):
+    PATH is caller-controlled and can point at any binary with that name, so
+    checking it first would let a stale or substituted `mecmcp-redact` -
+    built from a different denylist than the one this repo pins - decide
+    what gets redacted without anyone noticing. `$MECMCP_REDACT_BIN` is an
+    explicit, deliberate override (CI pointing at a binary it already
+    built), so it still wins over the vendored path.
     """
     override = os.environ.get("MECMCP_REDACT_BIN")
     if override:
         return Path(override)
+    if _VENDORED_BINARY.exists():
+        return _VENDORED_BINARY
     on_path = shutil.which("mecmcp-redact")
     if on_path:
         return Path(on_path)
-    if _VENDORED_BINARY.exists():
-        return _VENDORED_BINARY
     raise MecmcpRedactUnavailable(
-        "mecmcp-redact CLI not found (checked $MECMCP_REDACT_BIN, PATH, and "
-        f"{_VENDORED_BINARY}). Run scripts/vendor_mecmcp_redact.sh to build "
-        f"the pinned {pinned_tag()} binary before writing a result manifest."
+        "mecmcp-redact CLI not found (checked $MECMCP_REDACT_BIN, "
+        f"{_VENDORED_BINARY}, and PATH). Run scripts/vendor_mecmcp_redact.sh "
+        f"to build the pinned {pinned_tag()} binary before writing a result "
+        "manifest."
     )
+
+
+def _check_version(binary: Path) -> None:
+    """Verify `binary --version` matches the pinned tag before first use.
+
+    A `mecmcp-redact` found via `$MECMCP_REDACT_BIN` or PATH is not
+    necessarily the pinned build - a different version can carry a
+    different denylist/shape set and silently change what gets redacted.
+    Fail closed rather than trust the binary's identity.
+    """
+    expected = f"mecmcp-redact {pinned_tag().lstrip('v')}"
+    try:
+        result = subprocess.run(
+            [str(binary), "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        raise MecmcpRedactUnavailable(
+            f"failed to execute mecmcp-redact at {binary}: {exc}"
+        ) from exc
+    actual = result.stdout.strip()
+    if result.returncode != 0 or actual != expected:
+        raise MecmcpRedactUnavailable(
+            f"mecmcp-redact at {binary} reports version {actual!r} "
+            f"(exit {result.returncode}, stderr: {result.stderr.strip()!r}), "
+            f"expected {expected!r}; refusing to "
+            "redact with an unverified binary"
+        )
 
 
 def _run(fmt: str, input_text: str) -> str:
     binary = _binary_path()
+    _check_version(binary)
     try:
         result = subprocess.run(
             [str(binary), "--format", fmt],
@@ -65,7 +107,12 @@ def _run(fmt: str, input_text: str) -> str:
             capture_output=True,
             text=True,
             check=False,
+            timeout=60,
         )
+    except subprocess.TimeoutExpired as exc:
+        raise MecmcpRedactUnavailable(
+            f"mecmcp-redact --format {fmt} timed out after 60s"
+        ) from exc
     except OSError as exc:
         raise MecmcpRedactUnavailable(
             f"failed to execute mecmcp-redact at {binary}: {exc}"

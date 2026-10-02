@@ -4,6 +4,7 @@ All secret shapes below are fabricated for this test file; none are derived
 from real device output or real crypt/SSH-key material.
 """
 
+import hashlib
 import json
 
 import pytest
@@ -1006,3 +1007,72 @@ def test_ip_placeholder_stable_across_ipv6_compression_forms():
     other shapes in this module."""
     result = redact._redact_text("2001:470::7 and 2001:470:0::7")
     assert result == "<IP-1> and <IP-1>"
+
+
+def test_json_tool_output_identifiers_masked():
+    """MEC-1241 review F1: a JSON-string leaf (e.g. a tool's raw `output`
+    field) was routed straight to `mecmcp_redact.redact_json_str`, which has
+    no identifier-masking concept at all, so hostnames and usernames inside
+    it reached the manifest in clear text - a regression versus a plain
+    (non-JSON-wrapped) string, which still got identifier masking."""
+    manifest = {
+        "results": [
+            {
+                "output": (
+                    '[{"device": "fw3.corp", "user": "bob", '
+                    '"serial-number": "FAKESN9"}]'
+                )
+            }
+        ]
+    }
+    redacted = redact.redact_manifest(manifest)
+    output = redacted["results"][0]["output"]
+    assert "fw3.corp" not in output
+    assert "bob" not in output
+    assert "FAKESN9" not in output
+    assert "<HOSTNAME-1>" in output
+    assert "<USER-1>" in output
+    assert "<SERIAL-1>" in output
+
+
+def test_json_tool_output_nested_identifier_masked():
+    """MEC-1241 review F1, nested form: `{"login": {"user": "carol"}}`."""
+    result = redact._redact_text('{"login": {"user": "carol"}}')
+    assert "carol" not in result
+    assert "<USER-1>" in result
+
+
+def test_json_string_leaf_stays_valid_json_after_redaction():
+    """MEC-1241 review F2: the old JSON detour ran the identifier/secret text
+    regexes before deciding the text was JSON, and those regexes replace a
+    quoted value including the quotes - turning the JSON-string leaf into
+    invalid JSON (and, for `_SECRET_KEYWORD_RE`'s keyword-anchored match,
+    swallowing unrelated trailing fields once the text fell through to
+    mecmcp-redact's own text-format keyword rule)."""
+    result = redact._redact_text(
+        '{"password": "FAKEjsonpw", "host-name": "fw1.corp"}'
+    )
+    parsed = json.loads(result)  # must still be valid JSON
+    assert parsed["password"] == redact.REDACTED
+    assert parsed["host-name"] == "<HOSTNAME-1>"
+
+
+def test_config_digest_hashes_redacted_not_raw_text():
+    """MEC-1241 review F5: the digest used to hash the raw config (secrets
+    included). An attacker who can guess most of a low-entropy secret (a
+    short PSK, say) could confirm the guess offline against that hash. The
+    digest must hash the redacted text instead; only the reported size
+    still comes from the original."""
+    filler = "set system host-name test\n" * 100
+    blob = (
+        'set security ike policy p1 pre-shared-key ascii-text "FAKEpsk12345"\n'
+        + filler
+    )
+    assert len(blob) > redact._CONFIG_DIGEST_MIN_CHARS
+    assert blob.count("\n") > redact._CONFIG_DIGEST_MIN_LINES
+
+    result = redact._redact_text(blob)
+
+    assert "CONFIG DIGEST" in result
+    raw_digest = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+    assert raw_digest not in result, "digest hashed the raw (unredacted) config"
