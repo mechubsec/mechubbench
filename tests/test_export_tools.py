@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from mechubbench import cli
 
 
-def test_export_tools_writes_wellformed_schema():
+def test_export_tools_writes_wellformed_schema(monkeypatch):
     """export-tools writes wellformed schema from fake tools/list."""
     # Mock MCP tools/list response
     fake_tools = [
@@ -73,8 +73,10 @@ def test_export_tools_writes_wellformed_schema():
         # Mock argparse namespace
         args = Mock()
         args.mcp_endpoint = "http://test/mcp"
-        args.mcp_token = "test-token"
+        args.mcp_token_file = None
         args.out = "/tmp/test-tools.json"
+
+        monkeypatch.setenv("RUSTJUNOSMCP_TOKEN", "test-token")
 
         # Run export-tools
         result = cli.cmd_export_tools(args)

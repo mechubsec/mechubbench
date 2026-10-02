@@ -11,9 +11,43 @@ from pathlib import Path
 
 import jsonschema
 
-from . import core, runner
+from . import core, redact, runner
 
 logger = logging.getLogger(__name__)
+
+
+def _read_token(token_file: str | None, env_var: str) -> str | None:
+    """Resolve a bearer token from a file or environment variable.
+
+    Tokens are never accepted as a bare CLI value: process listings (ps,
+    /proc, shell history) would leak them. Prefer the file; fall back to
+    the environment variable.
+
+    Args:
+        token_file: Path to a file containing the token, or None
+        env_var: Environment variable name to fall back to
+
+    Returns:
+        The token string, or None if neither source provided one
+
+    Raises:
+        ValueError: If token_file is given but empty, or cannot be read
+
+    Note:
+        token_file is attacker-controllable (a pasted token could end up in
+        the path argument by mistake); the error path must never echo it to
+        logs or exception messages.
+    """
+    if token_file:
+        try:
+            token = Path(token_file).read_text().strip()
+        except OSError:
+            logger.error("Failed to read token file")
+            raise ValueError("Failed to read token file") from None
+        if not token:
+            raise ValueError("Token file is empty")
+        return token
+    return os.environ.get(env_var)
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -48,6 +82,19 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     logger.info(f"Loaded {len(scenarios)} scenario(s)")
 
+    # Fail fast on a scenario declaring a too-wide expected_literals
+    # exemption (F4-7), rather than running the whole benchmark and only
+    # discovering the redaction config error when writing the manifest.
+    for scenario in scenarios:
+        for literal in scenario.get("expected_literals") or []:
+            try:
+                redact.validate_expected_literal(literal)
+            except ValueError as e:
+                logger.error(
+                    f"Scenario '{scenario.get('id', 'unknown')}': {e}"
+                )
+                return 1
+
     logger.info(f"Loading tools from {tools_path}")
     tools = core.load_tools(tools_path)
     logger.info(f"Loaded {len(tools)} tool(s)")
@@ -65,16 +112,31 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     # Check mode
     if args.mode == "agentic":
-        # Get MCP token from args or environment (AGENT token - commitless)
-        mcp_token = args.mcp_token or os.environ.get("RUSTJUNOSMCP_TOKEN")
+        if not args.mcp_endpoint:
+            logger.error(
+                "Agentic mode requires --mcp-endpoint (no default: an unset "
+                "lab endpoint must never be baked into the tool)"
+            )
+            return 1
+
+        # Get MCP token from a file or environment (AGENT token - commitless)
+        try:
+            mcp_token = _read_token(args.mcp_token_file, "RUSTJUNOSMCP_TOKEN")
+        except ValueError as e:
+            logger.error(str(e))
+            return 1
         if not mcp_token:
             logger.error(
-                "Agentic mode requires --mcp-token (or RUSTJUNOSMCP_TOKEN env var)"
+                "Agentic mode requires --mcp-token-file (or RUSTJUNOSMCP_TOKEN env var)"
             )
             return 1
 
         # Get optional setup token (OPERATOR-scoped - can commit)
-        setup_token = args.setup_token or os.environ.get("RUSTJUNOSMCP_SETUP_TOKEN")
+        try:
+            setup_token = _read_token(args.setup_token_file, "RUSTJUNOSMCP_SETUP_TOKEN")
+        except ValueError as e:
+            logger.error(str(e))
+            return 1
         if setup_token:
             logger.info("Setup token provided - scenario fault setup/teardown enabled")
         else:
@@ -173,9 +235,19 @@ def cmd_run(args: argparse.Namespace) -> int:
             scenarios, args.model, tools, args.endpoint, args.temperature
         )
 
-    # Write manifest
+    # Write manifest (redacted: model tool arguments are saved verbatim
+    # in-memory for scoring, but secret-shaped and identifying values never
+    # reach disk). allowed_literals is the union of every loaded scenario's
+    # expected_literals, so a value a scorer depends on stays visible.
+    allowed_literals: set[str] = set()
+    for scenario in scenarios:
+        allowed_literals.update(scenario.get("expected_literals") or [])
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(manifest, indent=2))
+    redacted_manifest = redact.redact_manifest(
+        manifest, allowed_literals=allowed_literals
+    )
+    output_path.write_text(json.dumps(redacted_manifest, indent=2))
     logger.info(f"Manifest written to {output_path}")
 
     # Summary
@@ -199,10 +271,14 @@ def cmd_export_tools(args: argparse.Namespace) -> int:
 
     output_path = Path(args.out)
 
-    # Get MCP token from args or env
-    mcp_token = args.mcp_token or os.environ.get("RUSTJUNOSMCP_TOKEN")
+    # Get MCP token from a file or env
+    try:
+        mcp_token = _read_token(args.mcp_token_file, "RUSTJUNOSMCP_TOKEN")
+    except ValueError as e:
+        logger.error(str(e))
+        return 1
     if not mcp_token:
-        logger.error("MCP token required: pass --mcp-token or set RUSTJUNOSMCP_TOKEN env var")
+        logger.error("MCP token required: pass --mcp-token-file or set RUSTJUNOSMCP_TOKEN env var")
         return 1
 
     # Create MCP client
@@ -327,17 +403,24 @@ def cmd_lint(args: argparse.Namespace) -> int:
     return 0
 
 
-def main() -> None:
-    """Main CLI entry point."""
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser.
+
+    Split out from main() so tests can inspect defaults (e.g. that --endpoint
+    stays on loopback with no flags) without invoking sys.exit.
+    """
     parser = argparse.ArgumentParser(
         prog="bench",
         description="Tool-call benchmark corpus and runner for "
         "network-automation agents",
+        allow_abbrev=False,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # run subcommand
-    run_parser = subparsers.add_parser("run", help="Run benchmarks against a model")
+    run_parser = subparsers.add_parser(
+        "run", help="Run benchmarks against a model", allow_abbrev=False
+    )
     run_parser.add_argument(
         "--model",
         required=True,
@@ -355,8 +438,8 @@ def main() -> None:
     )
     run_parser.add_argument(
         "--endpoint",
-        default="http://mcp-infer.example.net:11434/v1",
-        help="OpenAI-compatible endpoint URL (default: http://mcp-infer.example.net:11434/v1)",
+        default="http://127.0.0.1:11434/v1",
+        help="OpenAI-compatible endpoint URL (default: http://127.0.0.1:11434/v1, loopback-only)",
     )
     run_parser.add_argument(
         "--out",
@@ -377,18 +460,24 @@ def main() -> None:
     )
     run_parser.add_argument(
         "--mcp-endpoint",
-        default="http://198.51.100.10:30031/mcp",
-        help="MCP endpoint URL for agentic mode (default: http://198.51.100.10:30031/mcp)",
+        default=None,
+        help="MCP endpoint URL, required when --mode agentic (e.g. "
+        "http://127.0.0.1:30031/mcp). No default: an unset lab endpoint "
+        "must never be baked into the tool.",
     )
     run_parser.add_argument(
-        "--mcp-token",
+        "--mcp-token-file",
         default=None,
-        help="MCP bearer token for agent (commitless, or set RUSTJUNOSMCP_TOKEN env var)",
+        help="Path to file containing the MCP bearer token for agent "
+        "(commitless, or set RUSTJUNOSMCP_TOKEN env var). Never pass a token "
+        "directly on the command line.",
     )
     run_parser.add_argument(
-        "--setup-token",
+        "--setup-token-file",
         default=None,
-        help="Optional operator-scoped MCP token for scenario fault setup/teardown (or set RUSTJUNOSMCP_SETUP_TOKEN env var)",
+        help="Path to file containing an optional operator-scoped MCP token "
+        "for scenario fault setup/teardown (or set RUSTJUNOSMCP_SETUP_TOKEN "
+        "env var). Never pass a token directly on the command line.",
     )
     run_parser.add_argument(
         "--num-predict",
@@ -411,16 +500,19 @@ def main() -> None:
     # export-tools subcommand
     export_parser = subparsers.add_parser(
         "export-tools",
-        help="Export live tool schemas from MCP server (kills source-extraction drift)"
+        help="Export live tool schemas from MCP server (kills source-extraction drift)",
+        allow_abbrev=False,
     )
     export_parser.add_argument(
         "--mcp-endpoint",
         required=True,
-        help="MCP endpoint URL (e.g., http://198.51.100.10:30031/mcp)",
+        help="MCP endpoint URL (e.g., http://127.0.0.1:30031/mcp)",
     )
     export_parser.add_argument(
-        "--mcp-token",
-        help="MCP bearer token (or set RUSTJUNOSMCP_TOKEN env var)",
+        "--mcp-token-file",
+        help="Path to file containing the MCP bearer token "
+        "(or set RUSTJUNOSMCP_TOKEN env var). Never pass a token directly "
+        "on the command line.",
     )
     export_parser.add_argument(
         "--out",
@@ -437,6 +529,12 @@ def main() -> None:
     )
     lint_parser.set_defaults(func=cmd_lint)
 
+    return parser
+
+
+def main() -> None:
+    """Main CLI entry point."""
+    parser = build_parser()
     args = parser.parse_args()
     exit_code = args.func(args)
     sys.exit(exit_code)

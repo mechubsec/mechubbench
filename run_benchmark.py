@@ -27,7 +27,7 @@ MODELS = [
 SCENARIOS_DIR = Path("scenarios")
 TOOLS_FILE = Path("tools/combined-tools.json")  # Combined Junos + PAN-OS tools
 RESULTS_DIR = Path("results")
-ENDPOINT = "http://mcp-infer.example.net:11434/v1"
+ENDPOINT = "http://127.0.0.1:11434/v1"
 TEMPERATURE = 0.0
 
 # Thresholds

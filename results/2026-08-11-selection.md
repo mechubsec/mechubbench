@@ -10,10 +10,10 @@ must draw from the scenario families where the pinned model is proven
 
 ## Environment
 
-- Server: rust-junosmcp **0.18.0** on LXC 609 (`198.51.100.10:30031`),
+- Server: rust-junosmcp **0.18.0** on the bench MCP host (address redacted),
   first sweep on the cancel-capable release
-- Inference: Ollama on mcp-infer (`198.51.100.11:11434`, endpoint pinned by IP
-  after resolver flakes killed a full run), temperature 0, agentic mode
+- Inference: Ollama on the bench inference host (address redacted, pinned by
+  IP after resolver flakes killed a full run), temperature 0, agentic mode
 - Device: vsrx-ci, fault-staged per scenario via the setup token
   (load_and_commit → run → rollback 1 → verified-clean candidate)
 - Agent tool surface: the same 11 read/stage/discard tools as sweeps 7/8
@@ -44,7 +44,7 @@ and fixed during its runs:
    test mocked a `payload` field the real server never returns. (`8b02e54`)
 
 One aborted run additionally established the endpoint-by-IP rule: local DNS
-(198.51.100.1) intermittently failed to resolve `mcp-infer.example.net` mid-run,
+intermittently failed to resolve the bench inference hostname mid-run,
 killing all 36 scenario runs.
 
 ## Sweep 9 (dev set: 12 Junos scenarios, outcome scoring)

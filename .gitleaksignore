@@ -1,0 +1,24 @@
+# Historical false positives of this repo's own vendor-keyword-anchored-secret
+# rule. Every entry is a docstring/comment describing the redactor's shapes, or
+# a synthetic FAKE-prefixed fixture, in a commit whose line has since been
+# rewritten (so an inline gitleaks:allow cannot reach it). Fingerprints are
+# commit-pinned: a new secret on any other commit/line is still caught.
+# Verified by review on MEC-188; do not add entries without the same check.
+cf73d7a78c671e2ba35ce24b346f959b613362db:mechubbench/redact.py:vendor-keyword-anchored-secret:51
+cf73d7a78c671e2ba35ce24b346f959b613362db:mechubbench/redact.py:vendor-keyword-anchored-secret:52
+d37e40478e3def9bb59cff726621ff16b8bf1f09:mechubbench/redact.py:vendor-keyword-anchored-secret:77
+662a560db5313a513d585b7a776283e5173709e6:tests/test_redact.py:vendor-keyword-anchored-secret:126
+662a560db5313a513d585b7a776283e5173709e6:tests/test_redact.py:vendor-keyword-anchored-secret:130
+662a560db5313a513d585b7a776283e5173709e6:tests/test_redact.py:vendor-keyword-anchored-secret:199
+662a560db5313a513d585b7a776283e5173709e6:tests/test_redact.py:vendor-keyword-anchored-secret:203
+
+# Same story, surfaced by the shared pem-private-key rule pulled in when
+# .gitleaks.toml started extending .gitleaks-vendor.toml (MEC-30): the PEM
+# header line in these fabricated test fixtures (see file-level docstring,
+# "All secret shapes below are fabricated...") has no FAKE token in the
+# matched secret itself ("RSA"), so the tests/ + FAKE allowlist in
+# .gitleaks.toml doesn't reach it. Verified same as above.
+79e7f18e7108dd6dae768554d174b52ed36f81f3:tests/test_redact.py:pem-private-key:799
+bc09851a36e0ce0aa230c17e32311d4e6a790d06:tests/test_redact.py:pem-private-key:257
+bc09851a36e0ce0aa230c17e32311d4e6a790d06:tests/test_redact.py:pem-private-key:799
+0d0db014a82c0e1c4679e6849b6bf81e5dac8604:tests/test_redact.py:pem-private-key:255

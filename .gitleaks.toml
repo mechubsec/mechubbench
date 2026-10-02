@@ -2,3 +2,74 @@ title = "mechubbench gitleaks config"
 
 [extend]
 path = ".gitleaks-vendor.toml"
+
+# Vendor-specific secret shapes the shared vendor ruleset (.gitleaks-vendor.toml)
+# does not cover, plus a couple of ids below that override the vendor shape with
+# a wider match. These are the same shapes mechubbench.redact scrubs from
+# results/*.json: Junos crypt hashes, SSH keys, and vendor pre-shared/community
+# secrets.
+[[rules]]
+id = "junos-crypt-secret"
+description = "Junos $1$/$5$/$6$ crypt secret, or a glibc/musl yescrypt $y$ hash (extra params$salt$hash segment vs the $1$/$5$/$6$ shape, so matched as its own alternative rather than folded into the same segment count)"
+regex = '''\$(?:[156]\$(?:rounds=\d+\$)?[A-Za-z0-9./]{1,16}\$[A-Za-z0-9./]{20,}|y\$[A-Za-z0-9./+]{1,16}\$[A-Za-z0-9./]{1,64}\$[A-Za-z0-9./]{20,})'''
+tags = ["junos", "secret"]
+
+[[rules]]
+id = "ssh-public-or-private-key-material"
+description = "Embedded SSH public key material (config authentication blocks)"
+regex = '''ssh-(?:rsa|dss|ed25519|ecdsa-[\w-]+)\s+([A-Za-z0-9+/=]{20,})'''
+secretGroup = 1
+tags = ["ssh", "secret"]
+
+[[rules]]
+id = "vendor-keyword-anchored-secret"
+description = "Value following a known secret-carrying config keyword (pre-shared-key/psk, authentication-key, authentication-password, community, device-id), skipping an optional Junos value-format word (ascii-text/hexadecimal)"
+regex = '''(?i)\b(pre[-_]shared[-_]key|psk|authentication[-_]key|authentication[-_]password|community|device[-_]id)\b(?:\s*[:=]\s*|\s+)(?:(?:ascii-text|hexadecimal|key)\s+)?("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']+)'''
+secretGroup = 2
+tags = ["vendor", "secret"]
+
+[[rules]]
+id = "ospf-md5-plaintext-key"
+description = "OSPF plaintext MD5 authentication key (`authentication md5 <id> key <secret>`); the bare word `key` alone is too common a false-positive source to flag on its own"
+regex = '''(?i)\bmd5\s+\d+\s+key\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']+)'''
+secretGroup = 1
+tags = ["vendor", "secret"]
+
+# The two rules below are scoped to results/*.json only. They are a backstop
+# for mechubbench.redact, not a replacement for the vendor-shape rules above:
+# a gap in redact.py's own logic (see MEC-226) should still be caught here
+# before a result artifact is committed.
+[[rules]]
+id = "pem-private-key-in-results"
+description = "PEM-encoded private key block leaked into a benchmark result artifact"
+regex = '''-----BEGIN [A-Z ]*PRIVATE KEY-----'''
+path = '''results/.*\.json$'''
+tags = ["pem", "secret", "results"]
+
+[[rules]]
+id = "sensitive-keyword-in-results"
+description = "JSON key:value pair using a sensitive keyword (password/token/api-key/etc.), scoped to results/ so it still catches what mechubbench.redact misses. Requires a `:`/`=` separator (not just whitespace) so ordinary prose containing these words in an error message doesn't self-flag. Go's RE2 engine has no lookbehind, so the leading boundary is `(?:^|[^A-Za-z0-9])` rather than Python's `(?<![A-Za-z0-9])`; it still matches a keyword directly after a `_`, e.g. `admin_password`. A trailing `[-_][A-Za-z0-9]+` run is consumed before the closing `\\b` so a compound key like `secret_key` or `token_value` also matches: RE2 does support `\\b` (it's a DFA-representable boundary, not a lookahead), it just doesn't fire directly after the keyword when the next character is another word character like `_`."
+regex = '''(?i)(?:^|[^A-Za-z0-9])"?(password|passphrase|token|api[-_]key|private[-_]key|client[-_]secret|psk|pre[-_]shared[-_]key|secret)(?:[-_][A-Za-z0-9]+)*\b"?\s*[:=]\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"']{4,})'''
+secretGroup = 2
+path = '''results/.*\.json$'''
+tags = ["vendor", "secret", "results"]
+
+# The rule regexes above are literal strings that match themselves, so this
+# file's own body would otherwise self-flag.
+[[allowlists]]
+description = "This repo's own gitleaks config documents secret shapes as literal regexes"
+paths = [
+  '''(^|/)\.gitleaks\.toml$''',
+]
+
+# Fabricated FAKE-prefixed test fixtures must not self-flag, but only inside
+# tests/ - a `FAKE`-tagged secret anywhere else in the tree still gets caught.
+[[allowlists]]
+description = "Fabricated FAKE-prefixed secret fixtures under tests/ must not self-flag"
+condition = "AND"
+paths = [
+  '''^tests/''',
+]
+regexes = [
+  '''FAKE''',
+]

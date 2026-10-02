@@ -22,7 +22,7 @@ echo ""
     --model "$MODEL" \
     --scenarios scenarios/holdout/ \
     --tools tools/combined-tools.json \
-    --endpoint http://mcp-infer.example.net:11434/v1 \
+    --endpoint http://127.0.0.1:11434/v1 \
     --temperature 0.0 \
     --out "$OUTPUT"
 
