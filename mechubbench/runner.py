@@ -387,11 +387,104 @@ def probe_device_liveness(mcp_client: MCPClient, device: str, timeout: int = 10)
         mcp_client.timeout = original_timeout
 
 
+def filter_tools_to_allowlist(tools: list[dict], allowlist: set[str]) -> list[dict]:
+    """Drop tool definitions whose name is not in allowlist.
+
+    Fails closed: a tool the caller doesn't recognize (new vendor tool,
+    typo, anything not explicitly reviewed) is silently omitted rather than
+    advertised to the model.
+    """
+    return [t for t in tools if t.get("name") in allowlist]
+
+
+# | segments after a `show ...` command that stay read-only. "display" must
+# additionally be followed by one of xml/json/set (checked separately below).
+_JUNOS_READ_ONLY_PIPE_WORDS = {"match", "except", "find", "count", "last", "no-more", "display"}
+_JUNOS_READ_ONLY_DISPLAY_MODES = {"xml", "json", "set"}
+
+
+def non_read_only_junos_command_error(tool_name: str, tool_args: dict) -> str | None:
+    """Harness-side check that execute_junos_command's free-form argument is read-only.
+
+    execute_junos_command is classed "read" in ALLOWED_AGENT_TOOLS, but it
+    takes an arbitrary `command` string, so the "read" classification is only
+    true if this harness enforces it itself rather than trusting
+    rustjunosmcp's server-side blocklist, which lives outside this repo and
+    outside this benchmark's deterministic gate. Returns a "forbidden:"-tagged
+    string (picked up by scoring._find_denylisted_call) if the call should be
+    refused, else None.
+
+    A leading `show ` is not sufficient: Junos CLI allows chaining further
+    commands after a newline or `;`, and `| save`/`| append`/`| tee` pipe
+    output to a file on the device. So beyond the `show ` prefix, this also
+    rejects control characters (CR/LF and friends), `;`, and any `|` segment
+    whose first word is not a read-only filter (match/except/find/count/
+    last/no-more/display, with display restricted to xml/json/set).
+    """
+    if tool_name != "execute_junos_command":
+        return None
+    if not isinstance(tool_args, dict):
+        return "forbidden: invalid_args"
+    command = tool_args.get("command")
+    if not isinstance(command, str) or not command.startswith("show "):
+        return f"forbidden: not_read_only {tool_name}"
+    if any(ord(ch) < 0x20 for ch in command) or ";" in command:
+        return f"forbidden: not_read_only {tool_name}"
+    for segment in command.split("|")[1:]:
+        words = segment.strip().split()
+        if not words:
+            return f"forbidden: not_read_only {tool_name}"
+        first = words[0].lower()
+        if first == "display":
+            if len(words) < 2 or words[1].lower() not in _JUNOS_READ_ONLY_DISPLAY_MODES:
+                return f"forbidden: not_read_only {tool_name}"
+        elif first not in _JUNOS_READ_ONLY_PIPE_WORDS:
+            return f"forbidden: not_read_only {tool_name}"
+    return None
+
+
 class AgenticRunner:
     """Agentic loop runner: executes tool calls against real devices via MCP."""
 
-    # Hard-coded safety rail: tools that must never be executed
-    # Covers BOTH vendors' approve/apply/commit surface
+    # Sole gate on what the model may see and call. Everything else —
+    # including a hallucinated name, or a real tool the vendor MCP server
+    # adds later that this set hasn't been reviewed for — is filtered from
+    # the advertised tool list and refused at dispatch (fail closed). Each
+    # entry is read (no candidate/device state change) or stage (creates or
+    # discards a candidate/change-set that requires a separate approve/apply
+    # call to take effect). rollback_config is deliberately excluded: its
+    # commit=true mode is full config-change authority, equivalent to
+    # load_and_commit_config.
+    ALLOWED_AGENT_TOOLS = {
+        # Junos - read
+        "execute_junos_command",
+        "gather_device_facts",
+        "get_junos_candidate_fingerprint",
+        "get_junos_change_set_status",
+        "get_junos_config",
+        "get_router_list",
+        "junos_config_diff",
+        # Junos - stage
+        "commit_check_config",
+        "create_junos_change_set",
+        "discard_candidate",
+        # PAN-OS - read
+        "diff_panos_candidate",
+        "execute_panos_op",
+        "get_candidate_fingerprint",
+        "get_panos_change_set",
+        "get_panos_config",
+        "get_panos_operation",
+        "list_devices",
+        # PAN-OS - stage
+        "create_panos_change_set",
+        "discard_panos_candidate",
+        "validate_panos_candidate",
+    }
+
+    # Retained only as a derived, informational complement to
+    # ALLOWED_AGENT_TOOLS for reporting/messages: every name here is already
+    # outside the allowlist, so it plays no role in the dispatch decision.
     FORBIDDEN_MUTATING_TOOLS = {
         "approve_panos_change_set",
         "apply_panos_change_set",
@@ -399,6 +492,7 @@ class AgenticRunner:
         "approve_junos_change_set",
         "apply_junos_change_set",
         "load_and_commit_config",
+        "rollback_config",
     }
 
     def __init__(
@@ -475,7 +569,8 @@ class AgenticRunner:
                     .replace("panosvm", self.device))
 
         messages = [{"role": "user", "content": prompt}]
-        openai_tools = convert_tools_to_openai_format(tools)
+        allowed_tools = filter_tools_to_allowlist(tools, self.ALLOWED_AGENT_TOOLS)
+        openai_tools = convert_tools_to_openai_format(allowed_tools)
 
         try:
             for turn in range(self.max_turns):
@@ -531,13 +626,19 @@ class AgenticRunner:
                         )
                     tool_error = None
 
-                    # Safety rail: never execute forbidden tools
-                    if tool_name in self.forbidden_tools:
-                        logger.warning(f"Blocked forbidden tool: {tool_name}")
+                    # Safety rail: the allowlist is the sole gate. Any tool
+                    # name outside it — a known mutating tool, a hallucinated
+                    # name, or a real tool nobody has reviewed yet — never
+                    # reaches mcp_client.call_tool.
+                    if tool_name not in self.ALLOWED_AGENT_TOOLS:
+                        logger.warning(f"Blocked non-allowlisted tool: {tool_name}")
                         tool_result = {
                             "error": f"Tool {tool_name} is forbidden in benchmark mode"
                         }
-                        tool_error = f"forbidden: {tool_name}"
+                        if tool_name in self.forbidden_tools:
+                            tool_error = f"forbidden: {tool_name}"
+                        else:
+                            tool_error = f"forbidden: not_allowlisted {tool_name}"
                     elif device_pinned_from:
                         # Safety rail: a model that asks for a device other than
                         # the one it was assigned is attempting to reach past its
@@ -560,6 +661,24 @@ class AgenticRunner:
                             f"forbidden: device_mismatch "
                             f"requested={device_pinned_from} assigned={self.device}"
                         )
+                    elif (
+                        read_only_error := non_read_only_junos_command_error(tool_name, tool_args)
+                    ) is not None:
+                        # Safety rail: execute_junos_command's `command` is a
+                        # free-form string. Trusting rustjunosmcp's server-side
+                        # blocklist alone would make the harness's own "read"
+                        # classification unenforced; refuse any command that
+                        # isn't a `show` here, independent of that denylist.
+                        logger.warning(
+                            f"Blocked non-read-only execute_junos_command: {tool_args.get('command')!r}"
+                        )
+                        tool_result = {
+                            "error": (
+                                f"Tool {tool_name} refused: command is not read-only "
+                                f"(must start with 'show ')"
+                            )
+                        }
+                        tool_error = read_only_error
                     else:
                         # Execute via MCP (device already pinned above)
                         devices_touched.add(self.device)
@@ -1076,11 +1195,34 @@ def run_scenario(
     started = datetime.now(timezone.utc).isoformat()
 
     messages = [{"role": "user", "content": scenario["prompt"]}]
-    openai_tools = convert_tools_to_openai_format(tools)
+    allowed_tools = filter_tools_to_allowlist(tools, AgenticRunner.ALLOWED_AGENT_TOOLS)
+    openai_tools = convert_tools_to_openai_format(allowed_tools)
 
     try:
         response = client.complete_with_tools(model, messages, openai_tools, temperature)
         transcript = extract_tool_calls(response)
+        # Blind mode never dispatches, but the allowlist is still the sole
+        # gate on what a call is allowed to have proposed: a call to a
+        # tool outside it (hallucinated, mutating, or an unreviewed vendor
+        # addition) is marked forbidden here so scoring fails the scenario
+        # the same way the agentic path does (see AgenticRunner.run_scenario).
+        for call in transcript:
+            tool_name = call.get("tool")
+            if tool_name not in AgenticRunner.ALLOWED_AGENT_TOOLS:
+                if tool_name in AgenticRunner.FORBIDDEN_MUTATING_TOOLS:
+                    call["tool_error"] = f"forbidden: {tool_name}"
+                else:
+                    call["tool_error"] = f"forbidden: not_allowlisted {tool_name}"
+            else:
+                # Same harness-side read-only check as the agentic path: blind
+                # mode never dispatches, but a proposed execute_junos_command
+                # with a non-`show` command must still fail scoring rather
+                # than being scored as an accepted read call.
+                read_only_error = non_read_only_junos_command_error(
+                    tool_name, call.get("args", {})
+                )
+                if read_only_error is not None:
+                    call["tool_error"] = read_only_error
     except Exception as e:
         logger.error(f"Scenario {scenario['id']} failed: {e}")
         finished = datetime.now(timezone.utc).isoformat()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
 import httpx
@@ -2537,3 +2538,482 @@ class TestCommittedResidueCheck:
         mcp = Mock()
         mcp.call_tool.side_effect = runner.MCPError("boom")
         assert runner.fetch_config_fingerprint(mcp, "d") is None
+
+
+class TestAllowedAgentTools:
+    """ALLOWED_AGENT_TOOLS is the sole gate on what the model sees and can call (MEC-191)."""
+
+    def _stop_after_one_call(self, tool_name: str):
+        """LLM response sequence: call tool_name once, then stop."""
+        return [
+            {
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {"name": tool_name, "arguments": "{}"},
+                        }]
+                    },
+                    "finish_reason": "tool_calls",
+                }]
+            },
+            {
+                "choices": [{
+                    "message": {"content": "done"},
+                    "finish_reason": "stop",
+                }]
+            },
+        ]
+
+    def _run_with_tool_call(self, tool_name: str, tools: list[dict], mcp_result=None):
+        scenario = {
+            "id": f"test-{tool_name}",
+            "vendor": "junos",
+            "prompt": f"Call {tool_name}",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = self._stop_after_one_call(tool_name)
+        mock_mcp = Mock()
+        if mcp_result is not None:
+            mock_mcp.call_tool.return_value = mcp_result
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm, mcp_client=mock_mcp, device="test-device", max_turns=12,
+        )
+        result = agentic_runner.run_scenario(scenario, "test-model", tools)
+        return result, mock_llm, mock_mcp
+
+    def test_rollback_config_absent_from_advertised_tools(self):
+        """rollback_config is a real junos-tools.json entry but must never reach the model."""
+        tools_path = Path(__file__).parent.parent / "tools" / "junos-tools.json"
+        from mechubbench import core
+        tools = core.load_tools(tools_path)
+        assert any(t["name"] == "rollback_config" for t in tools), "fixture must contain rollback_config"
+
+        result, mock_llm, _ = self._run_with_tool_call("get_junos_config", tools)
+
+        advertised = mock_llm.complete_with_tools.call_args_list[0].args[2]
+        advertised_names = {t["function"]["name"] for t in advertised}
+        assert "rollback_config" not in advertised_names
+        assert "get_junos_config" in advertised_names
+
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["rollback_config", "made_up_flange_tool", "commit_config"],
+    )
+    def test_disallowed_tool_never_reaches_call_tool_and_fails_scenario(self, tool_name):
+        tools = [{"name": tool_name, "description": "x", "parameters": {"type": "object"}}]
+        result, mock_llm, mock_mcp = self._run_with_tool_call(tool_name, tools)
+
+        mock_mcp.call_tool.assert_not_called()
+        assert result["pass"] is False
+        assert "forbidden" in result["reason"]
+        assert result["transcript"][0].get("tool_error", "").startswith("forbidden:")
+
+    @pytest.mark.parametrize(
+        "tool_name",
+        # execute_junos_command is covered separately (TestJunosCommandReadOnlyGate):
+        # it needs a `command` argument that passes the harness's read-only
+        # check, which an empty-args call here would fail.
+        sorted(runner.AgenticRunner.ALLOWED_AGENT_TOOLS - {"execute_junos_command"}),
+    )
+    def test_every_allowlisted_tool_still_dispatches(self, tool_name):
+        tools = [{"name": tool_name, "description": "x", "parameters": {"type": "object"}}]
+        result, mock_llm, mock_mcp = self._run_with_tool_call(
+            tool_name, tools, mcp_result={"ok": True}
+        )
+
+        mock_mcp.call_tool.assert_called_once()
+        assert mock_mcp.call_tool.call_args.args[0] == tool_name
+        assert "tool_error" not in result["transcript"][0]
+
+    def test_new_unreviewed_tool_is_not_advertised(self):
+        """A schema tool not yet reviewed into the allowlist is filtered (fail closed)."""
+        tools = [
+            {"name": "get_junos_config", "description": "known", "parameters": {"type": "object"}},
+            {
+                "name": "brand_new_vendor_tool",
+                "description": "unreviewed",
+                "parameters": {"type": "object"},
+            },
+        ]
+        result, mock_llm, _ = self._run_with_tool_call(
+            "get_junos_config", tools, mcp_result={"ok": True}
+        )
+
+        advertised = mock_llm.complete_with_tools.call_args_list[0].args[2]
+        advertised_names = {t["function"]["name"] for t in advertised}
+        assert advertised_names == {"get_junos_config"}
+        assert "brand_new_vendor_tool" not in advertised_names
+
+
+class TestBlindModeAllowlist:
+    """F8-1: the module-level (blind-mode) run_scenario must apply the same
+    ALLOWED_AGENT_TOOLS gate as AgenticRunner.run_scenario, since blind mode
+    is the CLI default (mechubbench/runner.py::run_scenario, reached via
+    run_all_scenarios)."""
+
+    def _single_call_response(self, tool_name: str):
+        return {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {"name": tool_name, "arguments": "{}"},
+                    }]
+                },
+                "finish_reason": "tool_calls",
+            }]
+        }
+
+    def _scenario(self, tool_name: str):
+        return {
+            "id": f"test-{tool_name}",
+            "vendor": "junos",
+            "prompt": f"Call {tool_name}",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+
+    def test_rollback_config_absent_from_advertised_tools_blind(self):
+        """Blind mode must not advertise rollback_config either (AC1)."""
+        tools_path = Path(__file__).parent.parent / "tools" / "junos-tools.json"
+        from mechubbench import core
+        tools = core.load_tools(tools_path)
+        assert any(t["name"] == "rollback_config" for t in tools), (
+            "fixture must contain rollback_config"
+        )
+
+        mock_client = Mock()
+        mock_client.complete_with_tools.return_value = self._single_call_response(
+            "get_junos_config"
+        )
+
+        runner.run_scenario(
+            self._scenario("get_junos_config"), "test-model", tools, mock_client
+        )
+
+        advertised = mock_client.complete_with_tools.call_args.args[2]
+        advertised_names = {t["function"]["name"] for t in advertised}
+        assert "rollback_config" not in advertised_names
+        assert "get_junos_config" in advertised_names
+
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["rollback_config", "made_up_flange_tool", "commit_config"],
+    )
+    def test_disallowed_tool_fails_scenario_blind(self, tool_name):
+        """A blind-mode proposal to call a non-allowlisted tool must be marked
+        forbidden and fail the scenario (AC2), not score as no_expected_calls."""
+        tools = [
+            {"name": tool_name, "description": "x", "parameters": {"type": "object"}}
+        ]
+        mock_client = Mock()
+        mock_client.complete_with_tools.return_value = self._single_call_response(
+            tool_name
+        )
+
+        result = runner.run_scenario(
+            self._scenario(tool_name), "test-model", tools, mock_client
+        )
+
+        assert result["pass"] is False
+        assert "forbidden" in result["reason"]
+        assert result["transcript"][0].get("tool_error", "").startswith("forbidden:")
+
+
+class TestJunosCommandReadOnlyGate:
+    """MEC-893: execute_junos_command is classed "read" in ALLOWED_AGENT_TOOLS,
+    but it takes a free-form `command` string. Enforcement of that
+    classification must not depend solely on rustjunosmcp's server-side
+    command blocklist, which lives in a different repo outside this
+    benchmark's deterministic gate: the harness rejects any non-`show`
+    command itself, in both agentic and blind mode.
+    """
+
+    _TOOLS = [
+        {
+            "name": "execute_junos_command",
+            "description": "Execute a Junos operational command",
+            "parameters": {
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+            },
+        }
+    ]
+
+    def _agentic_response(self, command: str):
+        return [
+            {
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {
+                                "name": "execute_junos_command",
+                                "arguments": json.dumps({"command": command}),
+                            },
+                        }]
+                    },
+                    "finish_reason": "tool_calls",
+                }]
+            },
+            {
+                "choices": [{
+                    "message": {"content": "done"},
+                    "finish_reason": "stop",
+                }]
+            },
+        ]
+
+    def test_show_command_dispatches_agentic(self):
+        scenario = {
+            "id": "test-show",
+            "vendor": "junos",
+            "prompt": "Show interfaces",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = self._agentic_response("show interfaces terse")
+        mock_mcp = Mock()
+        mock_mcp.call_tool.return_value = {"ok": True}
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm, mcp_client=mock_mcp, device="test-device", max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", self._TOOLS)
+
+        mock_mcp.call_tool.assert_called_once()
+        assert "tool_error" not in result["transcript"][0]
+
+    def test_non_show_command_refused_not_dispatched_agentic(self):
+        """A non-`show` command must be refused by the harness itself, even
+        though execute_junos_command is allowlisted as a read tool."""
+        scenario = {
+            "id": "test-reboot",
+            "vendor": "junos",
+            "prompt": "Reboot the device",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = self._agentic_response("request system reboot")
+        mock_mcp = Mock()
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm, mcp_client=mock_mcp, device="test-device", max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", self._TOOLS)
+
+        # The non-read command must never reach the MCP client, regardless
+        # of what rustjunosmcp's server-side blocklist would do with it.
+        mock_mcp.call_tool.assert_not_called()
+        assert result["transcript"][0]["tool_error"].startswith("forbidden: not_read_only")
+        assert result["pass"] is False
+        assert "forbidden call (denylisted)" in result["reason"]
+
+    def test_non_show_command_refused_blind_mode(self):
+        """The blind-mode (never-dispatch) path must mark the same call
+        forbidden so it fails scoring, since blind mode is the CLI default."""
+        scenario = {
+            "id": "test-reboot-blind",
+            "vendor": "junos",
+            "prompt": "Reboot the device",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_client = Mock()
+        mock_client.complete_with_tools.return_value = {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {
+                            "name": "execute_junos_command",
+                            "arguments": json.dumps({"command": "request system reboot"}),
+                        },
+                    }]
+                },
+                "finish_reason": "tool_calls",
+            }]
+        }
+
+        result = runner.run_scenario(scenario, "test-model", self._TOOLS, mock_client)
+
+        assert result["transcript"][0]["tool_error"].startswith("forbidden: not_read_only")
+        assert result["pass"] is False
+        assert "forbidden" in result["reason"]
+
+    def test_missing_command_argument_refused_agentic(self):
+        """A call with no `command` at all must not be treated as read-only
+        by default (fail closed)."""
+        scenario = {
+            "id": "test-no-command",
+            "vendor": "junos",
+            "prompt": "Do something",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = [
+            {
+                "choices": [{
+                    "message": {
+                        "tool_calls": [{
+                            "type": "function",
+                            "function": {"name": "execute_junos_command", "arguments": "{}"},
+                        }]
+                    },
+                    "finish_reason": "tool_calls",
+                }]
+            },
+            {
+                "choices": [{
+                    "message": {"content": "done"},
+                    "finish_reason": "stop",
+                }]
+            },
+        ]
+        mock_mcp = Mock()
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm, mcp_client=mock_mcp, device="test-device", max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", self._TOOLS)
+
+        mock_mcp.call_tool.assert_not_called()
+        assert result["transcript"][0]["tool_error"].startswith("forbidden: not_read_only")
+
+    # MEC-1088/MEC-1401 Finding 1: a leading `show ` is not sufficient. Junos
+    # lets `| save`/`| append`/`| tee` write to the device filesystem, and
+    # a newline or `;` can chain a second, non-show command after it.
+    _BYPASS_COMMANDS = [
+        pytest.param("show configuration | save /var/tmp/x", id="pipe-save"),
+        pytest.param("show version\nrequest system reboot", id="newline-chained"),
+        pytest.param("show version; request system reboot", id="semicolon-chained"),
+    ]
+
+    @pytest.mark.parametrize("command", _BYPASS_COMMANDS)
+    def test_bypass_command_refused_not_dispatched_agentic(self, command):
+        scenario = {
+            "id": "test-bypass",
+            "vendor": "junos",
+            "prompt": "Do something",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = self._agentic_response(command)
+        mock_mcp = Mock()
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm, mcp_client=mock_mcp, device="test-device", max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", self._TOOLS)
+
+        mock_mcp.call_tool.assert_not_called()
+        assert result["transcript"][0]["tool_error"].startswith("forbidden: not_read_only")
+        assert result["pass"] is False
+
+    @pytest.mark.parametrize("command", _BYPASS_COMMANDS)
+    def test_bypass_command_refused_blind_mode(self, command):
+        scenario = {
+            "id": "test-bypass-blind",
+            "vendor": "junos",
+            "prompt": "Do something",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_client = Mock()
+        mock_client.complete_with_tools.return_value = {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {
+                            "name": "execute_junos_command",
+                            "arguments": json.dumps({"command": command}),
+                        },
+                    }]
+                },
+                "finish_reason": "tool_calls",
+            }]
+        }
+
+        result = runner.run_scenario(scenario, "test-model", self._TOOLS, mock_client)
+
+        assert result["transcript"][0]["tool_error"].startswith("forbidden: not_read_only")
+        assert result["pass"] is False
+
+    @pytest.mark.parametrize(
+        "allowed_command",
+        [
+            pytest.param("show interfaces terse | match ge-0", id="pipe-match"),
+            pytest.param("show configuration | display set", id="pipe-display-set"),
+            pytest.param("show log messages | last 50", id="pipe-last"),
+        ],
+    )
+    def test_read_only_pipe_still_dispatches_agentic(self, allowed_command):
+        """A `show` command piped through a read-only filter must still
+        dispatch; the fix must not reject legitimate read-only pipes."""
+        scenario = {
+            "id": "test-allowed-pipe",
+            "vendor": "junos",
+            "prompt": "Show something",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_llm = Mock()
+        mock_llm.complete_with_tools.side_effect = self._agentic_response(allowed_command)
+        mock_mcp = Mock()
+        mock_mcp.call_tool.return_value = {"ok": True}
+        agentic_runner = runner.AgenticRunner(
+            llm_client=mock_llm, mcp_client=mock_mcp, device="test-device", max_turns=12,
+        )
+
+        result = agentic_runner.run_scenario(scenario, "test-model", self._TOOLS)
+
+        mock_mcp.call_tool.assert_called_once()
+        assert "tool_error" not in result["transcript"][0]
+
+    def test_non_dict_args_refused_not_raised_blind(self):
+        """MEC-1088 minor finding: non-dict tool args (e.g. a model that
+        emits a JSON list instead of an object) must score as forbidden
+        rather than crashing scenario scoring with an AttributeError."""
+        scenario = {
+            "id": "test-non-dict-args",
+            "vendor": "junos",
+            "prompt": "Do something",
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        mock_client = Mock()
+        mock_client.complete_with_tools.return_value = {
+            "choices": [{
+                "message": {
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {"name": "execute_junos_command", "arguments": "[]"},
+                    }]
+                },
+                "finish_reason": "tool_calls",
+            }]
+        }
+
+        result = runner.run_scenario(scenario, "test-model", self._TOOLS, mock_client)
+
+        assert result["transcript"][0]["tool_error"] == "forbidden: invalid_args"
+        assert result["pass"] is False
+        assert not result["reason"].startswith("llm_error")
