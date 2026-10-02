@@ -60,3 +60,8 @@ manifests/
 # file. Summaries (*.md) stay trackable.
 results/*.json
 results/**/*.json
+
+# scripts/vendor_mecmcp_redact.sh's build of the pinned mecmcp-redact CLI
+# (MEC-1241) - a cloned mecmcp checkout plus the compiled binary, neither of
+# which belongs in this repo's history.
+.mecmcp-redact/
