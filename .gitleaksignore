@@ -22,3 +22,19 @@ d37e40478e3def9bb59cff726621ff16b8bf1f09:mechubbench/redact.py:vendor-keyword-an
 bc09851a36e0ce0aa230c17e32311d4e6a790d06:tests/test_redact.py:pem-private-key:257
 bc09851a36e0ce0aa230c17e32311d4e6a790d06:tests/test_redact.py:pem-private-key:799
 0d0db014a82c0e1c4679e6849b6bf81e5dac8604:tests/test_redact.py:pem-private-key:255
+
+# Same story again, in the MEC-1241 coverage fixture
+# (test_redact_manifest_covers_every_known_secret_form_for_junos_and_panos):
+# a docstring referencing one of this module's local-gap field names, and
+# f-string source lines interpolating a dict lookup right after that same
+# field name as a bare config token, read as keyword-then-value to the
+# regex-based rules below even though the captured "value" is Python
+# dict-access syntax, not a secret; the PEM header line is the same
+# no-FAKE-token gap as above. All values in this fixture are fabricated
+# (see the function's own docstring). Verified same as above.
+7148757f2a74875c848ab68fb2ab62e81699c416:tests/test_redact.py:vendor-keyword-anchored-secret:746
+7148757f2a74875c848ab68fb2ab62e81699c416:tests/test_redact.py:vendor-keyword-anchored-secret:768
+7148757f2a74875c848ab68fb2ab62e81699c416:tests/test_redact.py:vendor-keyword-anchored-secret:770
+7148757f2a74875c848ab68fb2ab62e81699c416:tests/test_redact.py:vendor-keyword-anchored-secret:772
+7148757f2a74875c848ab68fb2ab62e81699c416:tests/test_redact.py:pem-private-key:785
+7148757f2a74875c848ab68fb2ab62e81699c416:tests/test_redact.py:private-key:785
