@@ -8,16 +8,27 @@ only the on-disk artifact is scrubbed.
 
 Two independent concerns share this module:
 
-- Secrets (crypt hashes, SSH/PEM keys, pre-shared keys, tokens, ...): masked
-  to a fixed ``REDACTED`` marker. The exact value never needs to be told
-  apart from another instance of the same shape.
+- Secrets (crypt hashes, PEM keys, pre-shared keys, tokens, ...): routed
+  through the `mecmcp_redact` module, a subprocess wrapper around the
+  `mecmcp-redact` CLI - the same shared denylist-and-shape engine every
+  mecmcp vendor MCP server links directly (MEC-1241/MEC-1231). This repo
+  does not hand-roll its own copy of that scan; a single engine shared
+  across every mechub tool surface is the point. Two narrow exceptions stay
+  local because the shared engine does not cover them (confirmed against
+  the pinned release, not assumed): `_SSH_KEY_RE` (no SSH public/private key
+  shape in `mecmcp-redact`'s value-shape catch-all) and the `device-id`
+  keyword (not in its field denylist). Both are flagged to Kay as upstream
+  gaps worth closing in `mecmcp-redact` itself.
 - Identifiers (IP addresses, host-name, serial-number, username,
   domain-name): masked to a *stable per-run placeholder* instead
-  (``<IP-1>``, `<HOSTNAME-1>`, ...). Unlike secrets, two occurrences of the
-  same address/hostname/etc. in one manifest are useful to tell apart from
-  two occurrences of two different ones when a human reviews the redacted
-  artifact, so identical inputs must resolve to the same placeholder within
-  one `redact_manifest` call. Placeholders are not stable *across* calls.
+  (``<IP-1>``, `<HOSTNAME-1>`, ...). `mecmcp-redact` has no identifier-masking
+  concept at all - it only ever replaces a value with a fixed `[REDACTED]`
+  marker - so this stays entirely local. Unlike secrets, two occurrences of
+  the same address/hostname/etc. in one manifest are useful to tell apart
+  from two occurrences of two different ones when a human reviews the
+  redacted artifact, so identical inputs must resolve to the same
+  placeholder within one `redact_manifest` call. Placeholders are not
+  stable *across* calls.
 
 The IP model is allowlist-shaped, not denylist-shaped: every IPv4/IPv6
 literal is masked *unless* it falls in a documentation range, loopback, or a
@@ -36,29 +47,16 @@ import json
 import re
 from collections.abc import Iterable
 
+from . import mecmcp_redact
+
 REDACTED = "[REDACTED]"
 
-# Junos/PAN-OS crypt hashes: "$9$...", "$6$salt$hash", glibc/musl yescrypt
-# "$y$params$salt$hash", etc. Junos' $9$ family uses its own base alphabet
-# beyond [\w./-], so match anything up to the next whitespace or quote rather
-# than enumerating characters.
-_CRYPT_HASH_RE = re.compile(r'\$(?:\d|y|2[aby]|gy|7)\$[^\s"\'\\]+')
-
-# PEM-encoded private key block (any algorithm: RSA, EC, "PRIVATE KEY", ...).
-# Matched non-greedily across newlines so a manifest holding the block inside
-# a JSON string (with literal "\n" sequences already decoded to real
-# newlines by json.loads before _redact_text ever sees it as a leaf value)
-# still has the whole block replaced, not just the BEGIN/END lines. The END
-# line is optional (`\Z`) so a key body truncated mid-stream - model output
-# and tool arguments both get cut off - still has its body redacted instead
-# of leaking everything after BEGIN.
-_PEM_BLOCK_RE = re.compile(
-    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?"
-    r"(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)",
-    re.S,
-)
-
-# SSH public/private key material.
+# SSH public/private key material. Kept local: confirmed against the pinned
+# mecmcp-redact release (crates/mecmcp-redact/src/shape.rs's value-shape
+# catch-all covers crypt hashes, PEM blocks, PAN-OS "-AQ==" blobs, and "ENC"
+# markers, but not an "ssh-<alg> <base64>" line) that this shape has no
+# upstream equivalent - flagged to Kay as a gap worth closing in
+# mecmcp-redact itself, not papered over here silently.
 _SSH_KEY_RE = re.compile(
     r"ssh-(?:rsa|dss|ed25519|ecdsa-[\w-]+)\s+[A-Za-z0-9+/=]+(?:\s+\S+)?"
 )
@@ -107,27 +105,16 @@ _LOOPBACK_NETWORKS = (
     ipaddress.ip_network("::1/128"),
 )
 
-# Keyword-anchored redaction: the token right after one of these keywords is
-# the secret, regardless of vendor syntax quirks (quoted or bare). Used both
-# for text scanning (_SECRET_KEYWORD_RE, below) and for key-aware redaction
-# of parsed dict values (_redact_obj) whose value doesn't itself look like
-# any known secret shape (e.g. an opaque token stored under "community").
-_SECRET_KEYWORDS = (
-    "secret",
-    "encrypted-password",
-    "pre-shared-key",
-    "psk",
-    "authentication-key",
-    "authentication-password",  # SNMPv3 USM auth key
-    "community",
-    "device-id",
-    "password",
-    "passphrase",
-    "token",
-    "api-key",
-    "private-key",
-    "client-secret",
-)
+# Keyword-anchored redaction for the one secret keyword confirmed missing
+# from mecmcp-redact's own field denylist (crates/mecmcp-redact/src/denylist.rs
+# has no "device-id" entry, substring or exact - verified against the pinned
+# release, not assumed). Every other secret keyword this module used to carry
+# locally ("secret", "password", "pre-shared-key", "token", ... - see git
+# history) is now handled by mecmcp_redact.redact_text/redact_json_str
+# instead of being duplicated here. Flagged to Kay as a gap worth closing in
+# mecmcp-redact itself, since every vendor server sharing that crate has the
+# same blind spot for Junos's chassis device-id, not just this repo.
+_SECRET_KEYWORDS = ("device-id",)
 
 # Keyword-anchored redaction for *identifying* (not secret) values: the SOC
 # operator's identity and the device's identity. Masked to a stable per-run
@@ -278,47 +265,12 @@ _LOGIN_USER_RE = re.compile(
     r"|[^\s\"']+)"
 )
 
-# OSPF plaintext MD5 authentication key, e.g. vendor CLI's
-# `authentication md5 <id> key <value>` syntax. The bare word `key` is not
-# itself a secret-carrying keyword (too common a false-positive source), so
-# this only fires in that specific `md5 <id> key` sequence.
-_OSPF_MD5_KEY_RE = re.compile(
-    r'(?i)(?P<key>\bmd5\s+\d+\s+key)(?P<sep>\s+)'
-    r'(?P<val>"(?:[^"\\]|\\.)*"'
-    r"|'(?:[^'\\]|\\.)*'"
-    r"|[^\s\"']+)"
-)
-
-# PAN-OS's own obfuscation format for secrets (pre-shared keys, TOTP seeds,
-# etc.) always starts with this literal prefix regardless of surrounding
-# syntax (bare CLI, JSON, or wrapped in XML - see _XML_SECRET_ELEMENT_RE).
-_PANOS_AQ_SECRET_RE = re.compile(r"-AQ==[A-Za-z0-9+/=]{8,}")
-
-# XML element wrapping a secret, e.g. PAN-OS API responses:
-#   <pre-shared-key><key>-AQ==...</key></pre-shared-key>
-# The secret may sit directly in the element or in a nested child element
-# (like <key>); redacting the whole element body handles both without
-# needing to enumerate vendor-specific child tag names. The tag name may
-# also carry segments around the keyword (e.g. <snmp-community-string>),
-# same as _is_secret_key does for dict keys.
-_XML_SECRET_ELEMENT_RE = re.compile(
-    r"(?is)<((?:[A-Za-z0-9]+[-_])*(?:" + _SECRET_KEYWORD_ALT + r")"
-    r"(?:[-_][A-Za-z0-9]+)*)\b([^>]*)>.*?</\1>"
-)
-
 # Same idea, for identifier elements (e.g. PAN-OS/Junos XML API responses
 # with <host-name>myrouter</host-name> or <serial-number>...</serial-number>).
 _IDENTIFIER_XML_ELEMENT_RE = re.compile(
     r"(?is)<((?:[A-Za-z0-9]+[-_])*(?:" + _IDENTIFIER_KEYWORD_ALT + r")"
     r"(?:[-_][A-Za-z0-9]+)*)\b([^>]*)>(.*?)</\1>"
 )
-
-# `Authorization: Bearer <token>` / `Authorization: Basic <creds>` (or a bare
-# scheme + token in logged headers/errors) - the scheme name is kept, only
-# the token/credentials are redacted. The token charclass excludes quotes so
-# a JSON-quoted header value (`"Authorization": "Bearer x"`) keeps its
-# closing quote intact.
-_AUTH_SCHEME_TOKEN_RE = re.compile(r'(?i)\b(Bearer|Basic)\s+([^\s"\']+)')
 
 # Large multi-line blobs (e.g. an embedded device config dump) are reduced to
 # a digest rather than stored verbatim.
@@ -333,12 +285,18 @@ def _is_config_sized(text: str) -> bool:
     )
 
 
-def _digest(text: str) -> str:
-    digest = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
-    lines = text.count("\n") + 1
+def _digest(original_text: str, hashed_text: str) -> str:
+    """Build the digest marker. Size is reported against `original_text` (so
+    the marker accurately describes what was replaced); the hash itself is
+    taken over `hashed_text`, which must have secrets already redacted - an
+    attacker who can guess most of a low-entropy secret (a short PSK, say)
+    could otherwise confirm the guess offline against a hash of the raw
+    config (F5)."""
+    digest = hashlib.sha256(hashed_text.encode("utf-8", "replace")).hexdigest()[:16]
+    lines = original_text.count("\n") + 1
     return (
         f"[CONFIG DIGEST sha256:{digest} "
-        f"({lines} lines, {len(text)} chars) - content redacted]"
+        f"({lines} lines, {len(original_text)} chars) - content redacted]"
     )
 
 
@@ -557,9 +515,32 @@ def _sub_identifier_xml(match: re.Match, state: _RedactionState) -> str:
 
 
 def _redact_text(text: str, state: _RedactionState | None = None) -> str:
+    """Mask identifiers locally, then hand the rest to `mecmcp_redact` for
+    the secret pass (MEC-1241): crypt hashes, PEM blocks, PAN-OS `-AQ==`
+    blobs, denylisted-keyword values, all of it - see the module docstring
+    for the two shapes (`_SSH_KEY_RE`, the `device-id` keyword) kept local
+    because `mecmcp-redact` does not cover them yet.
+
+    Checked against the *original* text, before any digest threshold:
+    `mecmcp_redact.redact_json_str`/`redact_text` re-render JSON compactly,
+    so measuring size after the round trip would let a large pretty-printed
+    config sail through undigested.
+    """
     if state is None:
         state = _RedactionState()
 
+    if _is_config_sized(text):
+        return _digest(text, mecmcp_redact.redact_text(text))
+
+    # A JSON-looking string leaf (a tool's raw `output` field, for example)
+    # is parsed and walked with `_redact_obj` instead of the text regexes
+    # below: the regexes only match secret/identifier keywords as bare
+    # prose, not as quoted JSON object keys, so a JSON blob routed through
+    # them lost its identifier masking entirely (hostnames/usernames passed
+    # through in clear text) and, where a regex did match, the substitution
+    # consumed the surrounding quotes and left invalid JSON behind. Parsing
+    # first keeps JSON structure intact and reuses the same identifier/secret
+    # handling `redact_manifest` already applies to every other field.
     stripped = text.lstrip()
     if stripped[:1] in "{[":
         try:
@@ -567,27 +548,16 @@ def _redact_text(text: str, state: _RedactionState | None = None) -> str:
         except ValueError:
             pass
         else:
-            # Check the digest threshold against the original text first:
-            # json.dumps re-serialises compactly (no newlines), so a large
-            # pretty-printed config would otherwise sail through as full
-            # JSON instead of being digested like its non-JSON equivalent.
-            if _is_config_sized(text):
-                return _digest(text)
-            return json.dumps(_redact_obj(parsed, state=state))
+            return mecmcp_redact.redact_json_str(
+                json.dumps(_redact_obj(parsed, state=state))
+            )
 
-    text = _PEM_BLOCK_RE.sub(REDACTED, text)
-    text = _CRYPT_HASH_RE.sub(REDACTED, text)
     text = _SSH_KEY_RE.sub(REDACTED, text)
-    text = _XML_SECRET_ELEMENT_RE.sub(
-        lambda m: f"<{m.group(1)}{m.group(2)}>{REDACTED}</{m.group(1)}>", text
-    )
     text = _IDENTIFIER_XML_ELEMENT_RE.sub(
         lambda m: _sub_identifier_xml(m, state), text
     )
-    text = _PANOS_AQ_SECRET_RE.sub(REDACTED, text)
     text = _IPV6_CANDIDATE_RE.sub(lambda m: _mask_ipv6_candidate(m, state), text)
     text = _IPV4_RE.sub(lambda m: _mask_ip_match(m, state), text)
-    text = _AUTH_SCHEME_TOKEN_RE.sub(lambda m: f"{m.group(1)} {REDACTED}", text)
     text = _SECRET_KEYWORD_RE.sub(
         lambda m: f"{m.group('key')}{m.group('sep')}{REDACTED}", text
     )
@@ -595,14 +565,8 @@ def _redact_text(text: str, state: _RedactionState | None = None) -> str:
         lambda m: _sub_identifier_keyword(m, state), text
     )
     text = _LOGIN_USER_RE.sub(lambda m: _sub_login_user(m, state), text)
-    text = _OSPF_MD5_KEY_RE.sub(
-        lambda m: f"{m.group('key')}{m.group('sep')}{REDACTED}", text
-    )
 
-    if _is_config_sized(text):
-        text = _digest(text)
-
-    return text
+    return mecmcp_redact.redact_text(text)
 
 
 def _is_secret_key(key: str) -> bool:
@@ -653,12 +617,13 @@ def _redact_obj(obj, key: str | None = None, state: _RedactionState | None = Non
     if state is None:
         state = _RedactionState()
 
-    # Key-aware redaction: any value stored under a secret-carrying key
-    # (e.g. {"community": "abc123"}, {"pre-shared-key": {"key": "x"}},
-    # {"device-id": 123456789}) is redacted outright, regardless of its
-    # shape or type - the key name is the only signal available, and a
-    # non-string or nested value is not itself scanned for known secret
-    # shapes below.
+    # Key-aware redaction for the two concerns this traversal still owns
+    # locally (see module docstring): the "device-id" gap in mecmcp-redact's
+    # field denylist, and identifier keys (host-name, serial-number, user,
+    # device, ...). Every other secret-carrying dict key - including a
+    # non-string or nested value, which this function does not itself scan
+    # - is caught by the `mecmcp_redact.redact_json_str` pass
+    # `redact_manifest` runs over the whole structure afterward.
     if key is not None and obj is not None:
         if _is_secret_key(key):
             return REDACTED
@@ -684,6 +649,17 @@ def redact_manifest(
     """Return a deep copy of manifest with secret-shaped and identifying
     values redacted.
 
+    Two passes: `_redact_obj` walks the manifest locally for identifiers
+    (IP/hostname/serial/user/domain, masked to stable per-run placeholders -
+    see module docstring) and the `device-id` gap-fill, routing each string
+    leaf through `mecmcp_redact` along the way; then the whole result is run
+    through `mecmcp_redact.redact_json_str` once more, which catches every
+    secret-carrying dict key regardless of nesting or value type (an int, a
+    nested dict, a list - not just the string leaves the first pass already
+    covered one at a time). Re-running it over already-redacted content is a
+    no-op: placeholders and `[REDACTED]` markers match no denylisted key or
+    secret shape.
+
     Args:
         manifest: Run manifest as produced by run_all_scenarios[_agentic]
         allowed_literals: IP literals (bare addresses or CIDR ranges) that
@@ -695,4 +671,5 @@ def redact_manifest(
         A new manifest dict; the input is not mutated.
     """
     state = _RedactionState(frozenset(allowed_literals) if allowed_literals else None)
-    return _redact_obj(copy.deepcopy(manifest), state=state)
+    masked = _redact_obj(copy.deepcopy(manifest), state=state)
+    return json.loads(mecmcp_redact.redact_json_str(json.dumps(masked)))

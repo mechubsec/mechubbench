@@ -4,6 +4,7 @@ All secret shapes below are fabricated for this test file; none are derived
 from real device output or real crypt/SSH-key material.
 """
 
+import hashlib
 import json
 
 import pytest
@@ -252,7 +253,14 @@ def test_pem_private_key_block_redacted():
     """MEC-39 close-out: a PEM private-key block under a non-secret key
     (e.g. actions[].payload.text) must not survive verbatim - only
     gitleaks' opt-in pre-commit hook caught this before, and that hook
-    doesn't run by default (see MEC-885)."""
+    doesn't run by default (see MEC-885).
+
+    MEC-1241: mecmcp-redact's PEM handling redacts the key body but keeps
+    the "-----BEGIN ... PRIVATE KEY-----" header line - the header names
+    the algorithm, not the key, so this is still the safe direction (no key
+    material survives) even though the exact marker differs from this
+    repo's retired hand-rolled regex.
+    """
     pem = (
         "-----BEGIN RSA PRIVATE KEY-----\n"
         "FAKEbase64keymaterialAAAABBBBCCCCDDDDEEEEFFFF\n"
@@ -262,7 +270,6 @@ def test_pem_private_key_block_redacted():
     text = f"tool output:\n{pem}\nmore output"
     result = redact._redact_text(text)
     assert "FAKEbase64keymaterial" not in result
-    assert "BEGIN RSA PRIVATE KEY" not in result
     assert redact.REDACTED in result
 
 
@@ -309,18 +316,21 @@ def test_snmpv3_authentication_password_redacted():
 
 
 def test_bearer_token_redacted():
+    """MEC-1241: mecmcp-redact anchors on the "Authorization" key itself and
+    redacts the whole header value (scheme word included), rather than
+    keeping "Bearer" and redacting only the token - a broader, still-safe,
+    over-redaction."""
     text = "Authorization: Bearer FAKEbearer.tok3n.jwtlike12345"
     result = redact._redact_text(text)
     assert "FAKEbearer.tok3n.jwtlike12345" not in result
-    assert "Bearer" in result
 
 
 def test_basic_auth_credentials_redacted():
-    """R3: only Bearer was handled; Basic auth leaked in full."""
+    """R3: only Bearer was handled; Basic auth leaked in full. See
+    test_bearer_token_redacted for why the scheme word isn't preserved."""
     text = "Authorization: Basic FAKEbase64creds=="
     result = redact._redact_text(text)
     assert "FAKEbase64creds==" not in result
-    assert "Basic" in result
 
 
 def test_x_api_key_header_redacted():
@@ -433,16 +443,21 @@ def test_panos_xml_compound_tag_snmp_community_string_redacted():
 
 def test_dict_key_secret_redacted_even_without_matching_shape():
     """A secret stored under a known secret-carrying dict key must be
-    redacted even when its value has no recognizable secret shape - the
-    key name is the only signal available (no CLI keyword text to scan)."""
-    obj = {"community": "d3adbeefopaque"}
-    result = redact._redact_obj(obj)
+    redacted even when its value has no recognizable secret shape - the key
+    name is the only signal available (no CLI keyword text to scan).
+
+    MEC-1241: `_redact_obj` alone only knows about the local `device-id` gap
+    plus identifiers (see module docstring); general dict-key secret
+    redaction is `mecmcp_redact`'s denylist scan, applied by the final pass
+    in `redact_manifest`, so this goes through the full pipeline instead of
+    `_redact_obj` directly.
+    """
+    result = redact.redact_manifest({"community": "d3adbeefopaque"})
     assert result == {"community": redact.REDACTED}
 
 
 def test_dict_key_secret_redacted_case_and_underscore_insensitive():
-    obj = {"Encrypted_Password": "opaquevalue"}
-    result = redact._redact_obj(obj)
+    result = redact.redact_manifest({"Encrypted_Password": "opaquevalue"})
     assert result == {"Encrypted_Password": redact.REDACTED}
 
 
@@ -454,10 +469,16 @@ def test_non_secret_non_identifier_key_left_to_text_scanning():
 
 def test_dict_key_secret_redacted_nested_dict_value():
     """R2: a secret-carrying key whose value is itself a dict (not a str)
-    must still be redacted outright, rather than surviving unredacted."""
-    obj = {"pre-shared-key": {"key": "FAKEnestedsecret"}}
-    result = redact._redact_obj(obj)
-    assert result == {"pre-shared-key": redact.REDACTED}
+    must still be redacted, rather than surviving unredacted.
+
+    MEC-1241: mecmcp-redact's structural pass (`redact_manifest`'s final
+    `mecmcp_redact.redact_json_str` step) preserves the container and
+    force-redacts every scalar leaf inside it, rather than collapsing the
+    whole value to a single `[REDACTED]` string the way this repo's retired
+    hand-rolled key check did - no secret survives either way.
+    """
+    result = redact.redact_manifest({"pre-shared-key": {"key": "FAKEnestedsecret"}})
+    assert result == {"pre-shared-key": {"key": redact.REDACTED}}
 
 
 def test_dict_key_secret_redacted_int_value():
@@ -470,10 +491,13 @@ def test_dict_key_secret_redacted_int_value():
 
 def test_dict_key_secret_redacted_list_value():
     """R2: a secret-carrying key whose value is a list of dicts must be
-    redacted outright rather than recursing into the list's contents."""
-    obj = {"community": [{"name": "FAKEcommunityname"}]}
-    result = redact._redact_obj(obj)
-    assert result == {"community": redact.REDACTED}
+    redacted, not passed through untouched.
+
+    MEC-1241: see test_dict_key_secret_redacted_nested_dict_value - the
+    structural pass recurses into the list rather than collapsing it.
+    """
+    result = redact.redact_manifest({"community": [{"name": "FAKEcommunityname"}]})
+    assert result == {"community": [{"name": redact.REDACTED}]}
 
 
 def test_dict_key_password_family_variants_redacted():
@@ -491,8 +515,7 @@ def test_dict_key_password_family_variants_redacted():
         "psk",
         "presharedkey",
     ):
-        obj = {key: "FAKEvalue"}
-        result = redact._redact_obj(obj)
+        result = redact.redact_manifest({key: "FAKEvalue"})
         assert result == {key: redact.REDACTED}, f"key {key!r} was not redacted"
 
 
@@ -558,8 +581,7 @@ def test_dict_key_compound_secret_variants_redacted():
         "secret_key",
         "accessToken",
     ):
-        obj = {key: "FAKEcompoundvalue"}
-        result = redact._redact_obj(obj)
+        result = redact.redact_manifest({key: "FAKEcompoundvalue"})
         assert result == {key: redact.REDACTED}, f"key {key!r} was not redacted"
 
 
@@ -718,6 +740,87 @@ def test_redact_manifest_from_synthetic_run_with_secret_shapes():
         assert secret_shape not in blob, f"{secret_shape!r} leaked into redacted manifest"
 
 
+def test_redact_manifest_covers_every_known_secret_form_for_junos_and_panos():
+    """MEC-1241 coverage fixture: a manifest carrying one instance of every
+    secret shape this benchmark harness's two vendors (Junos, PAN-OS) can
+    emit - whether caught by mecmcp_redact's shared engine or by this
+    repo's two confirmed local gaps (SSH key shape, device-id keyword; see
+    redact.py's module docstring) - must come back with none of the raw
+    values present anywhere in the redacted manifest. All values are
+    fabricated, not real device output.
+    """
+    secrets = {
+        "junos_crypt_hash": '$9$FAKEjunoscrypthashAB12cdEF34',
+        "junos_pre_shared_key": "FAKEjunospsksecretvalue",
+        "junos_snmp_community": "FAKEjunoscommunitystring",
+        "junos_device_id": "FAKE0000-1111-2222-3333-444455556666.JUNOS",
+        "junos_radius_secret": "FAKEjunosradiussecret",
+        "panos_aq_blob": "-AQ==FAKEpanosaqsecretvalue1234",
+        "panos_api_key": "FAKEpanosapikeyvalue",
+        "panos_admin_password": "FAKEpanosadminpasswordvalue",
+        "pem_private_key": "FAKEbase64pemkeymaterialAAAABBBBCCCCDDDD",
+        "ssh_public_key": "FAKEsshkeymaterialAAAABBBBCCCCDDDDEEEEFFFFgggghhhh",
+        "bearer_token": "FAKEbearertoken12345.jwtlike",
+    }
+    junos_result = "\n".join(
+        [
+            'set system login user sduser authentication encrypted-password '
+            f'"{secrets["junos_crypt_hash"]}";',
+            'set security ike proposal p1 pre-shared-key ascii-text '
+            f'"{secrets["junos_pre_shared_key"]}";',
+            f'set snmp community "{secrets["junos_snmp_community"]}" '
+            "authorization read-only;",
+            f'device-id {secrets["junos_device_id"]};',
+            f'set system radius-server 192.168.5.9 secret '
+            f'"{secrets["junos_radius_secret"]}";',
+            f"ssh-ed25519 {secrets['ssh_public_key']} demo-user@example.net",
+        ]
+    )
+    panos_result = "\n".join(
+        [
+            f'<pre-shared-key><key>{secrets["panos_aq_blob"]}</key>'
+            "</pre-shared-key>",
+            f'{{"api_key": "{secrets["panos_api_key"]}"}}',
+            f'{{"admin_password": "{secrets["panos_admin_password"]}"}}',
+            f"Authorization: Bearer {secrets['bearer_token']}",
+            "-----BEGIN RSA PRIVATE KEY-----",
+            secrets["pem_private_key"],
+            "-----END RSA PRIVATE KEY-----",
+        ]
+    )
+    manifest = {
+        "run_id": "coverage-fixture",
+        "results": [
+            {
+                "id": "junos-coverage",
+                "transcript": [
+                    {
+                        "tool": "get_junos_config",
+                        "args": {"device": "vsrx-ci"},
+                        "result": junos_result,
+                    },
+                ],
+            },
+            {
+                "id": "panos-coverage",
+                "transcript": [
+                    {
+                        "tool": "panos_show_config",
+                        "args": {"device": "pa-dc1"},
+                        "result": panos_result,
+                    },
+                ],
+            },
+        ],
+    }
+
+    redacted = redact.redact_manifest(manifest)
+    blob = json.dumps(redacted)
+
+    for name, value in secrets.items():
+        assert value not in blob, f"{name} ({value!r}) leaked into redacted manifest"
+
+
 # --- PR #8 review follow-up (Percy, F4-1 through F4-8) ------------------
 #
 # All values below are synthetic. Each test fails against 0d0db01 (the PR #8
@@ -794,7 +897,11 @@ def test_panos_serial_and_devicename_xml_tags_redacted():
 def test_truncated_pem_private_key_redacted():
     """F4-3: a PEM block cut off mid-stream (model output or tool arguments
     truncated before an END line) must still have its body redacted, not
-    just the addresses that happen to have a matching END line."""
+    just the addresses that happen to have a matching END line.
+
+    MEC-1241: see test_pem_private_key_block_redacted - the BEGIN header
+    line surviving is expected under mecmcp-redact, not a leak.
+    """
     pem = (
         "-----BEGIN RSA PRIVATE KEY-----\n"
         "FAKEbase64keymaterialAAAABBBBCCCCDDDDEEEEFFFF\n"
@@ -802,7 +909,6 @@ def test_truncated_pem_private_key_redacted():
     )
     result = redact._redact_text(pem)
     assert "FAKEbase64keymaterial" not in result
-    assert "BEGIN RSA PRIVATE KEY" not in result
     assert redact.REDACTED in result
 
 
@@ -901,3 +1007,72 @@ def test_ip_placeholder_stable_across_ipv6_compression_forms():
     other shapes in this module."""
     result = redact._redact_text("2001:470::7 and 2001:470:0::7")
     assert result == "<IP-1> and <IP-1>"
+
+
+def test_json_tool_output_identifiers_masked():
+    """MEC-1241 review F1: a JSON-string leaf (e.g. a tool's raw `output`
+    field) was routed straight to `mecmcp_redact.redact_json_str`, which has
+    no identifier-masking concept at all, so hostnames and usernames inside
+    it reached the manifest in clear text - a regression versus a plain
+    (non-JSON-wrapped) string, which still got identifier masking."""
+    manifest = {
+        "results": [
+            {
+                "output": (
+                    '[{"device": "fw3.corp", "user": "bob", '
+                    '"serial-number": "FAKESN9"}]'
+                )
+            }
+        ]
+    }
+    redacted = redact.redact_manifest(manifest)
+    output = redacted["results"][0]["output"]
+    assert "fw3.corp" not in output
+    assert "bob" not in output
+    assert "FAKESN9" not in output
+    assert "<HOSTNAME-1>" in output
+    assert "<USER-1>" in output
+    assert "<SERIAL-1>" in output
+
+
+def test_json_tool_output_nested_identifier_masked():
+    """MEC-1241 review F1, nested form: `{"login": {"user": "carol"}}`."""
+    result = redact._redact_text('{"login": {"user": "carol"}}')
+    assert "carol" not in result
+    assert "<USER-1>" in result
+
+
+def test_json_string_leaf_stays_valid_json_after_redaction():
+    """MEC-1241 review F2: the old JSON detour ran the identifier/secret text
+    regexes before deciding the text was JSON, and those regexes replace a
+    quoted value including the quotes - turning the JSON-string leaf into
+    invalid JSON (and, for `_SECRET_KEYWORD_RE`'s keyword-anchored match,
+    swallowing unrelated trailing fields once the text fell through to
+    mecmcp-redact's own text-format keyword rule)."""
+    result = redact._redact_text(
+        '{"password": "FAKEjsonpw", "host-name": "fw1.corp"}'
+    )
+    parsed = json.loads(result)  # must still be valid JSON
+    assert parsed["password"] == redact.REDACTED
+    assert parsed["host-name"] == "<HOSTNAME-1>"
+
+
+def test_config_digest_hashes_redacted_not_raw_text():
+    """MEC-1241 review F5: the digest used to hash the raw config (secrets
+    included). An attacker who can guess most of a low-entropy secret (a
+    short PSK, say) could confirm the guess offline against that hash. The
+    digest must hash the redacted text instead; only the reported size
+    still comes from the original."""
+    filler = "set system host-name test\n" * 100
+    blob = (
+        'set security ike policy p1 pre-shared-key ascii-text "FAKEpsk12345"\n'
+        + filler
+    )
+    assert len(blob) > redact._CONFIG_DIGEST_MIN_CHARS
+    assert blob.count("\n") > redact._CONFIG_DIGEST_MIN_LINES
+
+    result = redact._redact_text(blob)
+
+    assert "CONFIG DIGEST" in result
+    raw_digest = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+    assert raw_digest not in result, "digest hashed the raw (unredacted) config"
