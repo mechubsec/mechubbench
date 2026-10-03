@@ -73,19 +73,3 @@ paths = [
 regexes = [
   '''FAKE''',
 ]
-
-# tests/test_redact.py builds its fixtures via Python implicit string
-# concatenation and f-string interpolation (see its own module docstring:
-# every secret shape in this file is fabricated). The keyword half of a
-# config line (e.g. `pre-shared-key `) and the FAKE-prefixed value half can
-# land on different source lines, or the value can come from an
-# interpolated dict lookup rather than literal text. gitleaks matches
-# per-line, so the FAKE-regex allowlist above never sees the keyword line
-# and the finding survives. Scoped to this one file by exact path, not all
-# of tests/, so a real-looking secret fixture added elsewhere under tests/
-# is still caught.
-[[allowlists]]
-description = "tests/test_redact.py fixtures split a keyword and its FAKE value across lines"
-paths = [
-  '''^tests/test_redact\.py$''',
-]

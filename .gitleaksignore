@@ -38,3 +38,20 @@ bc09851a36e0ce0aa230c17e32311d4e6a790d06:tests/test_redact.py:pem-private-key:79
 7148757f2a74875c848ab68fb2ab62e81699c416:tests/test_redact.py:vendor-keyword-anchored-secret:772
 7148757f2a74875c848ab68fb2ab62e81699c416:tests/test_redact.py:pem-private-key:785
 7148757f2a74875c848ab68fb2ab62e81699c416:tests/test_redact.py:private-key:785
+
+# Same story again (MEC-1577/MEC-1579): a later edit moved the same
+# fabricated fixtures onto new lines - a docstring mentioning the keyword, a
+# FAKE-prefixed fixture value on a different line than its keyword, or a PEM
+# header with no FAKE token of its own. Verified same as above.
+e92f66c0235022109977616fd1bbd0aea492b4fe:tests/test_redact.py:vendor-keyword-anchored-secret:351
+e92f66c0235022109977616fd1bbd0aea492b4fe:tests/test_redact.py:vendor-keyword-anchored-secret:355
+e92f66c0235022109977616fd1bbd0aea492b4fe:tests/test_redact.py:vendor-keyword-anchored-secret:424
+e92f66c0235022109977616fd1bbd0aea492b4fe:tests/test_redact.py:vendor-keyword-anchored-secret:428
+e92f66c0235022109977616fd1bbd0aea492b4fe:tests/test_redact.py:pem-private-key:257
+e92f66c0235022109977616fd1bbd0aea492b4fe:tests/test_redact.py:pem-private-key:799
+21a5a1b6031cd00f36baf165b416fa75f6d30383:tests/test_redact.py:vendor-keyword-anchored-secret:747
+21a5a1b6031cd00f36baf165b416fa75f6d30383:tests/test_redact.py:vendor-keyword-anchored-secret:769
+21a5a1b6031cd00f36baf165b416fa75f6d30383:tests/test_redact.py:vendor-keyword-anchored-secret:771
+21a5a1b6031cd00f36baf165b416fa75f6d30383:tests/test_redact.py:vendor-keyword-anchored-secret:773
+21a5a1b6031cd00f36baf165b416fa75f6d30383:tests/test_redact.py:private-key:786
+21a5a1b6031cd00f36baf165b416fa75f6d30383:tests/test_redact.py:pem-private-key:786
