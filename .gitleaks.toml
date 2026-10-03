@@ -64,12 +64,34 @@ paths = [
 
 # Fabricated FAKE-prefixed test fixtures must not self-flag, but only inside
 # tests/ - a `FAKE`-tagged secret anywhere else in the tree still gets caught.
+# condition must be lowercase ("and"/"or"); gitleaks rejects "AND" (fixed
+# here), but note this does not make the intended per-match scoping work:
+# gitleaks skips a file entirely at the directory-walk stage whenever any
+# allowlist's `paths` matches it, before any regex/condition is evaluated.
+# So this entry blanket-exempts all of tests/ regardless of FAKE content,
+# independent of the condition value. Tracked separately from MEC-1577 as a
+# pre-existing gap (see that issue's thread) - fixing it means redesigning
+# this allowlist, which is out of scope for the test_redact.py fix below.
 [[allowlists]]
 description = "Fabricated FAKE-prefixed secret fixtures under tests/ must not self-flag"
-condition = "AND"
+condition = "and"
 paths = [
   '''^tests/''',
 ]
 regexes = [
   '''FAKE''',
+]
+
+# tests/test_redact.py (its own docstring: entire purpose is embedding
+# synthetic secret-shaped strings to validate the redactor) uses Python
+# implicit string concatenation, which puts a matched keyword/header on its
+# own source line and the FAKE-prefixed value on the next. gitleaks line-
+# matches the keyword line alone, so the FAKE-regex condition above never
+# sees the fabricated value and can't allowlist it (MEC-1425, MEC-1496,
+# MEC-1564). This entry only adds the literal path below; it does not
+# change the scope of the tests/ entry above.
+[[allowlists]]
+description = "tests/test_redact.py is a synthetic-fixture file; its keyword lines never carry the FAKE marker gitleaks would need to match"
+paths = [
+  '''^tests/test_redact\.py$''',
 ]
