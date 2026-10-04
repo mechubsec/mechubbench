@@ -1,0 +1,52 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+
+      - name: Cache vendored mecmcp-redact
+        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # v4.2.2
+        with:
+          path: .mecmcp-redact
+          key: mecmcp-redact-${{ hashFiles('mecmcp-redact.pin', 'scripts/vendor_mecmcp_redact.sh') }}
+          restore-keys: |
+            mecmcp-redact-
+
+      - name: Build vendored mecmcp-redact
+        run: bash scripts/vendor_mecmcp_redact.sh
+
+      - name: Install dependencies
+        run: |
+          pip install -e . pytest
+
+      - name: Run tests
+        run: pytest -q tests
