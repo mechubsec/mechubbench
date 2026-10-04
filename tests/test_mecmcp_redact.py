@@ -5,6 +5,8 @@ derived from real device output or real crypt/SSH-key material.
 """
 
 import os
+import re
+from pathlib import Path
 
 import pytest
 
@@ -18,6 +20,17 @@ def test_pinned_tag_is_a_release_tag():
     tag = mecmcp_redact.pinned_tag()
     assert tag.startswith("v")
     assert tag.count(".") == 2
+
+
+def test_pinned_commit_is_a_full_sha():
+    """MEC-1241 review F4: a tag ref can be force-moved to point at
+    different content after the fact, so mecmcp-redact.pin alone isn't a
+    reproducible pin. mecmcp-redact.commit must record the full 40-character
+    commit SHA the tag resolved to when it was pinned, so
+    scripts/vendor_mecmcp_redact.sh can verify the checkout against it."""
+    commit_file = Path(__file__).resolve().parent.parent / "mecmcp-redact.commit"
+    commit = commit_file.read_text().strip()
+    assert re.fullmatch(r"[0-9a-f]{40}", commit), commit
 
 
 def test_binary_path_raises_when_nothing_is_configured(monkeypatch):
@@ -42,6 +55,34 @@ def test_binary_path_honors_explicit_override(monkeypatch, tmp_path):
     fake_bin = tmp_path / "mecmcp-redact"
     monkeypatch.setenv("MECMCP_REDACT_BIN", str(fake_bin))
     assert mecmcp_redact._binary_path() == fake_bin
+
+
+def test_binary_path_prefers_vendored_build_over_path(monkeypatch, tmp_path):
+    """MEC-1241 review F3: `_binary_path` used to check PATH before the
+    vendored build, so any `mecmcp-redact` on PATH - possibly a stale build
+    or a different version entirely - silently won over the pinned one with
+    no version check. The vendored build must win instead."""
+    monkeypatch.delenv("MECMCP_REDACT_BIN", raising=False)
+    vendored = tmp_path / "vendored-mecmcp-redact"
+    vendored.write_text("")
+    monkeypatch.setattr(mecmcp_redact, "_VENDORED_BINARY", vendored)
+    monkeypatch.setattr(
+        mecmcp_redact.shutil, "which", lambda _name: "/usr/local/bin/mecmcp-redact"
+    )
+    assert mecmcp_redact._binary_path() == vendored
+
+
+def test_run_rejects_binary_with_wrong_version(monkeypatch, tmp_path):
+    """MEC-1241 review F3: a binary that resolves (via override or PATH) but
+    reports a different version than `mecmcp-redact.pin` must be refused
+    rather than trusted - it may carry a different denylist/shape set and
+    silently change what gets redacted."""
+    fake_bin = tmp_path / "fake-mecmcp-redact.sh"
+    fake_bin.write_text("#!/bin/sh\necho 'mecmcp-redact 0.0.1-evil'\nexit 0\n")
+    fake_bin.chmod(0o755)
+    monkeypatch.setenv("MECMCP_REDACT_BIN", str(fake_bin))
+    with pytest.raises(mecmcp_redact.MecmcpRedactUnavailable, match="0.0.1-evil"):
+        mecmcp_redact.redact_text("set snmp community FAKEvalue")
 
 
 @pytest.mark.skipif(

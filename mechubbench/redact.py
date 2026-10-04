@@ -285,12 +285,18 @@ def _is_config_sized(text: str) -> bool:
     )
 
 
-def _digest(text: str) -> str:
-    digest = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
-    lines = text.count("\n") + 1
+def _digest(original_text: str, hashed_text: str) -> str:
+    """Build the digest marker. Size is reported against `original_text` (so
+    the marker accurately describes what was replaced); the hash itself is
+    taken over `hashed_text`, which must have secrets already redacted - an
+    attacker who can guess most of a low-entropy secret (a short PSK, say)
+    could otherwise confirm the guess offline against a hash of the raw
+    config (F5)."""
+    digest = hashlib.sha256(hashed_text.encode("utf-8", "replace")).hexdigest()[:16]
+    lines = original_text.count("\n") + 1
     return (
         f"[CONFIG DIGEST sha256:{digest} "
-        f"({lines} lines, {len(text)} chars) - content redacted]"
+        f"({lines} lines, {len(original_text)} chars) - content redacted]"
     )
 
 
@@ -524,7 +530,27 @@ def _redact_text(text: str, state: _RedactionState | None = None) -> str:
         state = _RedactionState()
 
     if _is_config_sized(text):
-        return _digest(text)
+        return _digest(text, mecmcp_redact.redact_text(text))
+
+    # A JSON-looking string leaf (a tool's raw `output` field, for example)
+    # is parsed and walked with `_redact_obj` instead of the text regexes
+    # below: the regexes only match secret/identifier keywords as bare
+    # prose, not as quoted JSON object keys, so a JSON blob routed through
+    # them lost its identifier masking entirely (hostnames/usernames passed
+    # through in clear text) and, where a regex did match, the substitution
+    # consumed the surrounding quotes and left invalid JSON behind. Parsing
+    # first keeps JSON structure intact and reuses the same identifier/secret
+    # handling `redact_manifest` already applies to every other field.
+    stripped = text.lstrip()
+    if stripped[:1] in "{[":
+        try:
+            parsed = json.loads(stripped)
+        except ValueError:
+            pass
+        else:
+            return mecmcp_redact.redact_json_str(
+                json.dumps(_redact_obj(parsed, state=state))
+            )
 
     text = _SSH_KEY_RE.sub(REDACTED, text)
     text = _IDENTIFIER_XML_ELEMENT_RE.sub(
@@ -539,15 +565,6 @@ def _redact_text(text: str, state: _RedactionState | None = None) -> str:
         lambda m: _sub_identifier_keyword(m, state), text
     )
     text = _LOGIN_USER_RE.sub(lambda m: _sub_login_user(m, state), text)
-
-    stripped = text.lstrip()
-    if stripped[:1] in "{[":
-        try:
-            json.loads(stripped)
-        except ValueError:
-            pass
-        else:
-            return mecmcp_redact.redact_json_str(text)
 
     return mecmcp_redact.redact_text(text)
 
