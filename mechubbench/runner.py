@@ -1165,7 +1165,11 @@ def extract_tool_calls(response: dict) -> list[dict]:
         try:
             args = json.loads(args_str)
         except json.JSONDecodeError:
-            logger.warning(f"Failed to parse tool args: {args_str}")
+            # Never log args_str itself: it's the model's raw tool-call
+            # arguments, which can carry config payloads (PSKs, set-commands
+            # with secrets) that a JSON-parse failure gives no other reason
+            # to have redacted yet (MEC-1804).
+            logger.warning(f"Failed to parse tool args ({len(args_str)} chars)")
             args = {}
 
         tool_calls.append({"tool": tool_name, "args": args})

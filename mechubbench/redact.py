@@ -44,12 +44,41 @@ import copy
 import hashlib
 import ipaddress
 import json
+import logging
 import re
 from collections.abc import Iterable
 
 from . import mecmcp_redact
 
 REDACTED = "[REDACTED]"
+
+_LOG_WITHHELD = "[log message withheld: redaction unavailable]"
+
+
+class RedactingLogFilter(logging.Filter):
+    """Routes every log record through `mecmcp_redact` before a handler emits
+    it (MEC-1804).
+
+    Manifests and transcripts are redacted by `redact_manifest` above, but a
+    log record is built independently (often interpolating an exception's
+    `str(e)`, which can echo raw device/vendor output) and bypasses that
+    path entirely. Rather than audit every call site for what it might
+    interpolate, this filter treats every record as untrusted and redacts
+    the rendered message once, centrally.
+
+    Fails closed: if `mecmcp_redact` can't run (binary missing, wrong
+    version, timeout), the record's message is replaced with a fixed
+    placeholder rather than the raw (unredacted) text - a log line an
+    operator can't read is far cheaper than one that leaks a PSK.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            record.msg = mecmcp_redact.redact_text(record.getMessage())
+        except mecmcp_redact.MecmcpRedactUnavailable:
+            record.msg = _LOG_WITHHELD
+        record.args = None
+        return True
 
 # SSH public/private key material. Kept local: confirmed against the pinned
 # mecmcp-redact release (crates/mecmcp-redact/src/shape.rs's value-shape
