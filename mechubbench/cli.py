@@ -16,6 +16,24 @@ from . import core, redact, runner
 logger = logging.getLogger(__name__)
 
 
+def _configure_logging() -> None:
+    """Set up root logging and attach `redact.RedactingLogFilter` to every
+    root handler (MEC-1804).
+
+    A handler-level filter (not a logger-level one) so it applies to every
+    record that reaches it regardless of which logger emitted it - runner.py
+    and cli.py both propagate up to the handlers `basicConfig` installs
+    here. Idempotent: repeated calls (one per `cmd_*` entry point) must not
+    stack duplicate filters onto the same handler.
+    """
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    for handler in logging.getLogger().handlers:
+        if not any(
+            isinstance(f, redact.RedactingLogFilter) for f in handler.filters
+        ):
+            handler.addFilter(redact.RedactingLogFilter())
+
+
 def _read_token(token_file: str | None, env_var: str) -> str | None:
     """Resolve a bearer token from a file or environment variable.
 
@@ -59,7 +77,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success)
     """
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    _configure_logging()
 
     scenarios_dir = Path(args.scenarios)
     tools_path = Path(args.tools)
@@ -267,7 +285,7 @@ def cmd_export_tools(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 for success)
     """
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    _configure_logging()
 
     output_path = Path(args.out)
 
@@ -340,7 +358,7 @@ def cmd_lint(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 if all valid, 1 if any invalid)
     """
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    _configure_logging()
 
     scenarios_dir = Path(args.scenarios)
     schema_path = Path(__file__).parent.parent / "scenarios" / "schema.json"
