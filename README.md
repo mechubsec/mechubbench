@@ -2,7 +2,9 @@
 
 # mechubbench
 
-> a mechub project — tool-call benchmark corpus and runner for network-automation agents
+**Tool-call benchmark corpus and runner for network-automation agents**
+
+*a mechub project — sovereign network-security automation*
 
 ## Overview
 
