@@ -74,10 +74,10 @@ def test_log_filter_withholds_raw_message_when_redaction_unavailable(
 
     caplog.handler.addFilter(redact.RedactingLogFilter())
     logger = logging.getLogger("mechubbench.test_log_redact.unavailable")
-    fake_secret = "FAKEunavailable-secret-6f21"
+    fake_marker = "FAKEunavailable-secret-6f21"
 
     with caplog.at_level(logging.WARNING):
-        logger.warning(f"device error: upstream rejected value {fake_secret}")
+        logger.warning(f"device error: upstream rejected value {fake_marker}")
 
-    assert fake_secret not in caplog.text
+    assert fake_marker not in caplog.text
     assert "[log message withheld: redaction unavailable]" in caplog.text
