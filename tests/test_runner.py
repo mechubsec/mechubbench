@@ -3017,3 +3017,52 @@ class TestJunosCommandReadOnlyGate:
         assert result["transcript"][0]["tool_error"] == "forbidden: invalid_args"
         assert result["pass"] is False
         assert not result["reason"].startswith("llm_error")
+
+
+class TestSetupCommitsArePlain:
+    """Setup and teardown must not leave a commit-confirmed window pending:
+    on expiry Junos rolls back to rollback 1, which can be the fault itself."""
+
+    def _run(self, setup_block):
+        scenario = {
+            "id": "test-plain-commit",
+            "vendor": "junos",
+            "prompt": "Check the config",
+            "setup": setup_block,
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        agent_mcp, setup_mcp = Mock(), Mock()
+        agent_mcp.call_tool.return_value = ""  # clean version-0 diff
+        with patch("mechubbench.runner.LLMClient") as MockLLMClient, \
+             patch("mechubbench.runner.MCPClient", side_effect=[agent_mcp, setup_mcp]), \
+             patch("mechubbench.runner.fetch_config_fingerprint", return_value="fp"), \
+             patch("mechubbench.runner.verify_baseline_restored"):
+            MockLLMClient.return_value.complete_with_tools.return_value = {
+                "choices": [{"message": {"content": "Done"}, "finish_reason": "stop"}]
+            }
+            runner.run_all_scenarios_agentic(
+                scenarios=[scenario],
+                model="test-model",
+                tools=[],
+                endpoint="http://127.0.0.1:11434/v1",
+                mcp_endpoint="http://127.0.0.1:9999/mcp",
+                mcp_token="agent-token",
+                device="vsrx-ci",
+                setup_token="setup-token",
+            )
+        return setup_mcp
+
+    def test_setup_and_rollback_opt_out_of_commit_confirmed(self):
+        setup_mcp = self._run("set system host-name broken")
+
+        calls = {c.args[0]: c.args[1] for c in setup_mcp.call_tool.call_args_list}
+        assert calls["load_and_commit_config"]["confirm_timeout_mins"] == 0
+        assert calls["rollback_config"]["confirm_timeout_mins"] == 0
+        assert calls["rollback_config"]["commit"] is True
+
+    def test_comment_only_setup_loads_nothing(self):
+        setup_mcp = self._run("# Baseline only, nothing to load.\n")
+
+        setup_mcp.call_tool.assert_not_called()
