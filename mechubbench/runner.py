@@ -1497,21 +1497,22 @@ def run_all_scenarios_agentic(
                         "confirm_timeout_mins": 0,
                     }
                 )
-                setup_applied = True
-                logger.info(f"Fault setup committed for {scenario['id']}")
-            except MCPError as e:
-                logger.error(f"Fault setup failed for {scenario['id']}: {e}")
-                result = {
-                    "id": scenario["id"],
-                    "pass": False,
-                    "reason": f"setup_failed: {e}",
-                    "started": datetime.now(timezone.utc).isoformat(),
-                    "finished": datetime.now(timezone.utc).isoformat(),
-                    "transcript": [],
-                    "final_message": None,
-                }
-                results.append(result)
-                continue
+            except BaseException as e:
+                # A failed or interrupted setup may still have committed (lost
+                # response, timeout, SIGTERM mid-call). Rolling back would be a
+                # guess - rollback 1 undoes an unrelated commit if this one never
+                # landed - so stop and leave the device to a human.
+                logger.error(
+                    f"ABORT: Fault setup for {scenario['id']} did not complete: {e!r}. "
+                    f"Device {device} state unknown - check its commit history before reuse."
+                )
+                if isinstance(e, MCPError):
+                    # Detail went through the redacting logger above; an uncaught
+                    # traceback prints straight to stderr, so carry none of it.
+                    raise RuntimeError(f"Fault setup failed for {scenario['id']}") from None
+                raise
+            setup_applied = True
+            logger.info(f"Fault setup committed for {scenario['id']}")
 
         try:
             # Run scenario
