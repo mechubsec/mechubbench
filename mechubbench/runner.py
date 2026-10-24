@@ -1471,9 +1471,13 @@ def run_all_scenarios_agentic(
         # Apply scenario fault setup if setup client exists and scenario has setup block
         setup_applied = False
         baseline_fingerprint = None
-        if setup_client and scenario.get("setup"):
-            setup_config = prepare_setup_config(scenario["setup"], device)
-
+        setup_config = (
+            prepare_setup_config(scenario["setup"], device)
+            if setup_client and scenario.get("setup")
+            else ""
+        )
+        # A comment-only setup documents a baseline scenario: nothing to load.
+        if setup_config:
             # Record the pre-setup config fingerprint; the teardown compares
             # against it to catch COMMITTED residue, which a candidate-vs-running
             # diff (version 0) is blind to.
@@ -1488,23 +1492,27 @@ def run_all_scenarios_agentic(
                         "config_text": setup_config,
                         "config_format": "set",
                         "commit_comment": f"mechubbench scenario setup {scenario['id']} — auto-rollback",
+                        # rustjunosmcp >= 0.12 defaults to commit confirmed; an unconfirmed
+                        # window would expire mid-scenario and re-shuffle rollback 1.
+                        "confirm_timeout_mins": 0,
                     }
                 )
-                setup_applied = True
-                logger.info(f"Fault setup committed for {scenario['id']}")
-            except MCPError as e:
-                logger.error(f"Fault setup failed for {scenario['id']}: {e}")
-                result = {
-                    "id": scenario["id"],
-                    "pass": False,
-                    "reason": f"setup_failed: {e}",
-                    "started": datetime.now(timezone.utc).isoformat(),
-                    "finished": datetime.now(timezone.utc).isoformat(),
-                    "transcript": [],
-                    "final_message": None,
-                }
-                results.append(result)
-                continue
+            except BaseException as e:
+                # A failed or interrupted setup may still have committed (lost
+                # response, timeout, SIGTERM mid-call). Rolling back would be a
+                # guess - rollback 1 undoes an unrelated commit if this one never
+                # landed - so stop and leave the device to a human.
+                logger.error(
+                    f"ABORT: Fault setup for {scenario['id']} did not complete: {e!r}. "
+                    f"Device {device} state unknown - check its commit history before reuse."
+                )
+                if isinstance(e, MCPError):
+                    # Detail went through the redacting logger above; an uncaught
+                    # traceback prints straight to stderr, so carry none of it.
+                    raise RuntimeError(f"Fault setup failed for {scenario['id']}") from None
+                raise
+            setup_applied = True
+            logger.info(f"Fault setup committed for {scenario['id']}")
 
         try:
             # Run scenario
@@ -1523,7 +1531,8 @@ def run_all_scenarios_agentic(
                     # Rollback to version 1 (before setup)
                     setup_client.call_tool(
                         "rollback_config",
-                        {"device": device, "version": 1, "commit": True}
+                        # Plain commit: a confirmed one left pending would roll the fault back in.
+                        {"device": device, "version": 1, "commit": True, "confirm_timeout_mins": 0}
                     )
 
                     # Verify clean rollback (candidate vs running, version=0)

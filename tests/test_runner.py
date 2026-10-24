@@ -3017,3 +3017,84 @@ class TestJunosCommandReadOnlyGate:
         assert result["transcript"][0]["tool_error"] == "forbidden: invalid_args"
         assert result["pass"] is False
         assert not result["reason"].startswith("llm_error")
+
+
+class TestSetupCommitsArePlain:
+    """Setup and teardown must not leave a commit-confirmed window pending:
+    on expiry Junos rolls back to rollback 1, which can be the fault itself."""
+
+    def _run(self, setup_block, setup_error=None):
+        scenario = {
+            "id": "test-plain-commit",
+            "vendor": "junos",
+            "prompt": "Check the config",
+            "setup": setup_block,
+            "expected_calls": [],
+            "forbidden_calls": [],
+            "scoring": "all_expected_present_and_ordered_no_forbidden",
+        }
+        agent_mcp, setup_mcp = Mock(), Mock()
+        self.setup_mcp = setup_mcp  # reachable when _run raises
+        agent_mcp.call_tool.return_value = ""  # clean version-0 diff
+        if setup_error is not None:
+            def setup_call(tool, args):
+                if tool == "load_and_commit_config":
+                    raise setup_error
+                return {}
+            setup_mcp.call_tool.side_effect = setup_call
+        with patch("mechubbench.runner.LLMClient") as MockLLMClient, \
+             patch("mechubbench.runner.MCPClient", side_effect=[agent_mcp, setup_mcp]), \
+             patch("mechubbench.runner.fetch_config_fingerprint", return_value="fp"), \
+             patch("mechubbench.runner.verify_baseline_restored"):
+            MockLLMClient.return_value.complete_with_tools.return_value = {
+                "choices": [{"message": {"content": "Done"}, "finish_reason": "stop"}]
+            }
+            runner.run_all_scenarios_agentic(
+                scenarios=[scenario],
+                model="test-model",
+                tools=[],
+                endpoint="http://127.0.0.1:11434/v1",
+                mcp_endpoint="http://127.0.0.1:9999/mcp",
+                mcp_token="agent-token",
+                device="vsrx-ci",
+                setup_token="setup-token",
+            )
+        return setup_mcp
+
+    def test_setup_and_rollback_opt_out_of_commit_confirmed(self):
+        setup_mcp = self._run("set system host-name broken")
+
+        calls = {c.args[0]: c.args[1] for c in setup_mcp.call_tool.call_args_list}
+        assert calls["load_and_commit_config"]["confirm_timeout_mins"] == 0
+        assert calls["rollback_config"]["confirm_timeout_mins"] == 0
+        assert calls["rollback_config"]["commit"] is True
+
+    def test_comment_only_setup_loads_nothing(self):
+        setup_mcp = self._run("# Baseline only, nothing to load.\n")
+
+        setup_mcp.call_tool.assert_not_called()
+
+    def _tools_called(self, setup_mcp):
+        return [c.args[0] for c in setup_mcp.call_tool.call_args_list]
+
+    def test_failed_setup_aborts_without_rollback(self):
+        # rollback 1 would undo an unrelated commit if this setup never landed.
+        with pytest.raises(RuntimeError, match="Fault setup failed"):
+            self._run("set system host-name broken", setup_error=runner.MCPError("read timeout"))
+
+        assert self._tools_called(self.setup_mcp) == ["load_and_commit_config"]
+
+    def test_sigterm_mid_setup_aborts_without_rollback(self):
+        with pytest.raises(SystemExit):
+            self._run("set system host-name broken", setup_error=SystemExit(143))
+
+        assert self._tools_called(self.setup_mcp) == ["load_and_commit_config"]
+
+    def test_setup_abort_does_not_carry_raw_error_text(self):
+        # An uncaught traceback bypasses RedactingLogFilter.
+        with pytest.raises(RuntimeError) as exc_info:
+            self._run("set system host-name broken",
+                      setup_error=runner.MCPError("rejected line: RAW-DEVICE-DETAIL"))
+
+        assert "RAW-DEVICE-DETAIL" not in str(exc_info.value)
+        assert exc_info.value.__cause__ is None and exc_info.value.__suppress_context__
