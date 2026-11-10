@@ -2,8 +2,10 @@ id: fleet-sync-zone-prune
 vendor: junos
 domain: security zones
 setup: |
-  # Source has zone with interface bindings
-  set security zones security-zone trust interfaces ge-0/0/0.0
+  # Source has zone with interface bindings. A spare interface: ge-0/0/0.0 is
+  # the bench device's management interface and already bound to untrust.
+  set interfaces ge-0/0/4 unit 0 family inet
+  set security zones security-zone trust interfaces ge-0/0/4.0
   set security zones security-zone trust host-inbound-traffic system-services ping
 prompt: >
   You are syncing security zone 'trust' configuration from source to target.
@@ -24,5 +26,5 @@ outcome:
     - "host-inbound-traffic"
     - "ping"
   staged_diff_must_not_contain:
-    - "interfaces ge-0/0/0"
+    - "interfaces ge-0/0/4"
   must_not_commit: true

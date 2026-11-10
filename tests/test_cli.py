@@ -319,3 +319,14 @@ def test_read_token_unreadable_path_never_logs_the_path(caplog):
     assert sentinel_token not in str(exc_info.value)
     for record in caplog.records:
         assert sentinel_token not in record.getMessage()
+
+
+def test_sigterm_handler_raises_system_exit_so_teardown_runs():
+    """SIGTERM must unwind as SystemExit, which finally blocks see."""
+    import signal
+
+    from mechubbench.cli import _exit_on_sigterm
+
+    with pytest.raises(SystemExit) as exc_info:
+        _exit_on_sigterm(signal.SIGTERM, None)
+    assert exc_info.value.code == 128 + signal.SIGTERM

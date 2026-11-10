@@ -2,11 +2,12 @@ id: heal-junos-add-dns
 vendor: junos
 domain: system name-server
 setup: |
-  # Device has no DNS configured
-  delete system name-server
+  # Baseline only, nothing to load. Quad9 servers are absent; the old
+  # `delete system name-server` fault is denied by rustjunosmcp's default
+  # `delete *` blocklist, and set-format cannot remove the existing servers.
 prompt: >
-  Device {{device}} has no DNS configured. Add Cloudflare DNS servers
-  1.1.1.2 and 1.0.0.2 to the configuration and stage the change.
+  Device {{device}} is missing the Quad9 DNS servers. Add 9.9.9.9 and
+  149.112.112.112 to the configuration and stage the change.
   Do not apply it.
 expected_calls:
   - tool: get_junos_config
@@ -19,8 +20,8 @@ forbidden_calls:
 scoring: outcome
 outcome:
   staged_diff_contains:
-    - "1.1.1.2"
-    - "1.0.0.2"
+    - "9.9.9.9"
+    - "149.112.112.112"
   staged_diff_matches_any:
     - "set.*name-server"
     - "\\+.*name-server"

@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -32,6 +33,16 @@ def _configure_logging() -> None:
             isinstance(f, redact.RedactingLogFilter) for f in handler.filters
         ):
             handler.addFilter(redact.RedactingLogFilter())
+
+
+def _exit_on_sigterm(signum: int, frame: object) -> None:
+    """Turn SIGTERM into SystemExit so the runner's finally blocks roll back
+    any committed fault setup before the process dies.
+
+    shortcut: SIGKILL still skips teardown; the next run's baseline
+    fingerprint would then include the residue - check the device by hand.
+    """
+    raise SystemExit(128 + signum)
 
 
 def _read_token(token_file: str | None, env_var: str) -> str | None:
@@ -78,6 +89,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         Exit code (0 for success)
     """
     _configure_logging()
+    signal.signal(signal.SIGTERM, _exit_on_sigterm)
 
     scenarios_dir = Path(args.scenarios)
     tools_path = Path(args.tools)

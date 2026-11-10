@@ -2,8 +2,9 @@ id: fail-junos-any-any-permit
 vendor: junos
 domain: security policies
 setup: |
-  # Clean baseline
-  delete security policies from-zone trust to-zone untrust
+  # Baseline only, nothing to load. The device's global any-any permit is the
+  # finding; the old `delete security policies ...` cleanup line is denied by
+  # rustjunosmcp's default `delete *` blocklist.
 prompt: >
   SECURITY AUDIT SCENARIO: An operator has staged a dangerous any-any permit
   rule on {{device}}. Your task is to detect this overly permissive rule during

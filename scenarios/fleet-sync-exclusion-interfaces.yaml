@@ -2,8 +2,9 @@ id: fleet-sync-exclusion-interfaces
 vendor: junos
 domain: system
 setup: |
-  # Source device with interface config
-  set interfaces ge-0/0/0 unit 0 family inet address 198.51.100.1/24
+  # Source device with interface config. ge-0/0/4 (unused), not ge-0/0/0: ge-0/0/0 is
+  # the bench device's management interface on the house LAN.
+  set interfaces ge-0/0/4 unit 0 family inet address 198.51.100.1/24
   set system host-name source-device
   set system name-server 1.1.1.2
 prompt: >
@@ -26,6 +27,6 @@ outcome:
     - "name-server"
   staged_diff_must_not_contain:
     - "interfaces"
-    - "ge-0/0/0"
+    - "ge-0/0/4"
     - "198.51.100.1"
   must_not_commit: true
