@@ -282,8 +282,10 @@ class TestLLMClient:
             Mock(status_code=200, raise_for_status=Mock(), json=Mock(return_value={"choices": [{"message": {"content": "ok"}}]})),
         ]
 
+        # Patch runner's own `time`, not the global `time.sleep`: another thread's
+        # subprocess wait-poll also calls it, and its 0.001 s sleep lands here.
         with patch("httpx.post", side_effect=mock_responses), \
-             patch("time.sleep", side_effect=mock_sleep):
+             patch.object(runner, "time", Mock(wraps=runner.time, sleep=mock_sleep)):
 
             result = client.complete_with_tools(
                 "test-model",
@@ -313,7 +315,7 @@ class TestLLMClient:
         sleep_calls = []
 
         with patch("httpx.post", return_value=mock_response), \
-             patch("time.sleep", side_effect=lambda d: sleep_calls.append(d)):
+             patch.object(runner, "time", Mock(wraps=runner.time, sleep=sleep_calls.append)):
 
             with pytest.raises(httpx.HTTPStatusError):
                 client.complete_with_tools(
