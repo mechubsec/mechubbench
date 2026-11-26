@@ -1,6 +1,8 @@
 """Bench guard: golden drift check, fault planting, baseline and restore.
 
-Every call here uses the OPERATOR MCP client (rollback and commit scope).
+Calls use the OPERATOR MCP client (rollback and commit scope), except that
+`restore` confirms pending change-set ops with the AGENT client: only the
+opener of an op may confirm it.
 """
 
 from __future__ import annotations
@@ -155,7 +157,10 @@ def _confirm_awaiting_operations(mcp, agent_mcp, device: str) -> None:
     change_sets = mcp.call_tool(
         "list_junos_change_sets", {"router_name": device}, truncate=False
     )
-    for change_set in change_sets if isinstance(change_sets, list) else []:
+    # The server returns a JSON array of records; fail closed on anything else.
+    if not isinstance(change_sets, list):
+        raise RuntimeError(f"unexpected list_junos_change_sets result on {device}")
+    for change_set in change_sets:
         if change_set.get("state") != "applied" or not change_set.get("operation_id"):
             continue
         status = mcp.call_tool(
@@ -163,6 +168,10 @@ def _confirm_awaiting_operations(mcp, agent_mcp, device: str) -> None:
             {"change_set_id": change_set["id"], "router_name": device},
             truncate=False,
         )
+        if not isinstance(status, dict):
+            raise RuntimeError(
+                f"unexpected change-set status for {change_set['id']} on {device}"
+            )
         if status.get("commit_confirmation") != "awaiting_confirmation":
             continue
         if agent_mcp is None:
@@ -198,12 +207,6 @@ def _rollback_to_baseline(mcp, baseline: Baseline) -> None:
             "commit_comment": "mechubbench restore to baseline",
         },
     )
-    diff = mcp.call_tool(
-        "junos_config_diff", {"router_name": device, "version": 0}, truncate=False
-    )
-    diff_text = diff.get("diff", "") if isinstance(diff, dict) else str(diff or "")
-    if diff_text.strip():
-        raise RuntimeError(f"candidate not clean after rollback on {device}")
 
 
 def restore(mcp, baseline: Baseline, agent_mcp=None) -> None:
@@ -211,9 +214,9 @@ def restore(mcp, baseline: Baseline, agent_mcp=None) -> None:
 
     Confirms change-set ops awaiting confirmation (with `agent_mcp`, the
     opener; required when one is pending), then rolls back every commit
-    since the baseline in one plain commit, checks the candidate is clean,
-    then checks the fingerprint. With no commits since the baseline only the
-    fingerprint is checked. Safe to call after an attempt that raised midway.
+    since the baseline in one plain commit, then checks the fingerprint.
+    With no commits since the baseline only the fingerprint is checked.
+    Safe to call after an attempt that raised midway.
 
     Raises:
         RuntimeError: On any failure; the device must not be reused.
@@ -221,8 +224,10 @@ def restore(mcp, baseline: Baseline, agent_mcp=None) -> None:
     try:
         _confirm_awaiting_operations(mcp, agent_mcp, baseline.device)
         _rollback_to_baseline(mcp, baseline)
-    except MCPError as exc:
-        raise RuntimeError(f"restore of {baseline.device} failed: {exc}") from None
+    except (MCPError, KeyError, AttributeError, TypeError) as exc:
+        raise RuntimeError(f"restore of {baseline.device} failed: {exc!r}") from None
+    # The candidate fingerprint is the real gate: junos_config_diff v0
+    # compares against rollback 0 and is always empty.
     verify_baseline_restored(
         mcp, baseline.device, baseline.fingerprint, f"restore {baseline.device}"
     )

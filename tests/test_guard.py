@@ -85,9 +85,6 @@ class FakeMCP:
             device.plain_commit(config)
             device.confirm_pending = False
             return {"committed": True, "diff": "", "version": arguments["version"]}
-        if tool_name == "junos_config_diff":
-            assert arguments["version"] == 0
-            return {"diff": ""}
         if tool_name == "load_and_commit_config":
             device.plain_commit(device.config + "+" + arguments["config_text"])
             return {"committed": True}
@@ -238,17 +235,58 @@ def test_restore_fingerprint_mismatch_raises():
         restore(mcp, baseline)
 
 
-def test_restore_dirty_candidate_raises():
+def test_restore_dirty_candidate_caught_by_fingerprint():
     device, mcp, baseline = _setup()
     device.plain_commit("changed")
     original = mcp.call_tool
 
-    def dirty(tool_name, arguments, truncate=True):
-        if tool_name == "junos_config_diff":
-            return {"diff": "[edit]\n+ set foo"}
+    def leave_candidate_dirty(tool_name, arguments, truncate=True):
+        result = original(tool_name, arguments, truncate)
+        if tool_name == "rollback_config":
+            device.config = "base+staged"  # uncommitted candidate edit
+        return result
+
+    mcp.call_tool = leave_candidate_dirty
+    with pytest.raises(RuntimeError, match="fingerprint mismatch"):
+        restore(mcp, baseline)
+
+
+def _override(mcp, tool, value):
+    original = mcp.call_tool
+
+    def patched(tool_name, arguments, truncate=True):
+        if tool_name == tool:
+            mcp.calls.append((tool_name, arguments))
+            return value
         return original(tool_name, arguments, truncate)
 
-    mcp.call_tool = dirty
+    mcp.call_tool = patched
+
+
+@pytest.mark.parametrize("shape", [{"change_sets": []}, "[]", None])
+def test_restore_unexpected_change_set_list_shape_raises(shape):
+    _, mcp, baseline = _setup()
+    _override(mcp, "list_junos_change_sets", shape)
+    with pytest.raises(RuntimeError, match="unexpected"):
+        restore(mcp, baseline)
+    assert mcp.names("rollback_config") == []
+
+
+def test_restore_unexpected_status_shape_raises():
+    _, mcp, baseline = _setup(change_sets=_awaiting_change_sets())
+    _override(mcp, "get_junos_change_set_status", "not a dict")
+    with pytest.raises(RuntimeError, match="unexpected"):
+        restore(mcp, baseline)
+
+
+def test_restore_malformed_change_set_record_raises_runtime_error():
+    _, mcp, baseline = _setup()
+    # Applied with an operation_id but no "id": KeyError inside the confirm path.
+    _override(
+        mcp,
+        "list_junos_change_sets",
+        [{"device": "bench-srx345", "state": "applied", "operation_id": "op1"}],
+    )
     with pytest.raises(RuntimeError):
         restore(mcp, baseline)
 
