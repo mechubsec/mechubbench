@@ -47,7 +47,7 @@ def _passing_attempt(cell: dict) -> dict | None:
 
 def _total_tokens(attempt: dict) -> int | None:
     """Input + output; None when neither is reported (no data, not zero)."""
-    tokens = attempt.get("tokens") or {}
+    tokens = attempt.get("usage") or {}
     if tokens.get("input") is None and tokens.get("output") is None:
         return None
     return (tokens.get("input") or 0) + (tokens.get("output") or 0)
@@ -158,7 +158,7 @@ def _device_table(cells: list[dict]) -> str:
     rows = []
     for cell in cells:
         attempt = _passing_attempt(cell) or (cell["attempts"] or [None])[-1]
-        tokens = (attempt or {}).get("tokens") or {}
+        tokens = (attempt or {}).get("usage") or {}
         cols = "".join(f'<td class="n">{_num(tokens.get(k))}</td>' for k in TOKEN_KEYS)
         wall = _num(attempt["wall_s"], 1) if attempt else ""
         verdict = cell["verdict"] or ""

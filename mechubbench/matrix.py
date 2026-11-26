@@ -56,7 +56,7 @@ def render_prompt(prompt: str, device: str | None, hosts: dict[str, str]) -> str
     return prompt
 
 
-def _tokens(usage: AttemptUsage | None) -> dict | None:
+def _usage(usage: AttemptUsage | None) -> dict | None:
     if usage is None:
         return None
     return {
@@ -126,7 +126,7 @@ class _Matrix:
         targets = [device.name] if device else [d.name for d in self.inventory]
         baselines = []
         record = {"n": n, "outcome": "infra_error", "reason": "attempt aborted",
-                  "wall_s": None, "tokens": None}  # fmt: skip
+                  "wall_s": None, "usage": None}  # fmt: skip
         try:
             for name in targets:
                 baselines.append(capture_baseline(self.operator_mcp, name))
@@ -154,7 +154,7 @@ class _Matrix:
         )
         if run.model_id:
             cell["model_id"] = run.model_id
-        measured = {"wall_s": round(run.wall_seconds, 1), "tokens": _tokens(run.usage)}
+        measured = {"wall_s": round(run.wall_seconds, 1), "usage": _usage(run.usage)}
         if run.timed_out:
             return {**measured, "outcome": "timeout",
                     "reason": f"client timed out after {timeout_s}s"}  # fmt: skip

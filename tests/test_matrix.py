@@ -113,7 +113,7 @@ def test_pass_first_try(tmp_path, monkeypatch):
             "outcome": "pass",
             "reason": "judged pass",
             "wall_s": 12.3,
-            "tokens": {"input": 100, "output": 20, "cache_read": None,
+            "usage": {"input": 100, "output": 20, "cache_read": None,
                        "cache_write": None},
         }
     ]  # fmt: skip
@@ -363,3 +363,12 @@ def test_cli_matrix_needs_scenarios_and_out(tmp_path):
         ["matrix", "--mcp-endpoint", "http://bench/mcp"]
     )
     assert args.func(args) == 1
+
+
+def test_usage_counts_survive_redaction_on_disk(tmp_path, monkeypatch):
+    Lab(monkeypatch)
+    _matrix(tmp_path, FakeDriver(["pass"]))
+    on_disk = json.loads((tmp_path / "run.json").read_text())
+    [attempt] = _cell(on_disk)["attempts"]
+    assert attempt["usage"] == {"input": 100, "output": 20, "cache_read": None,
+                                "cache_write": None}  # fmt: skip

@@ -11,7 +11,7 @@ def _cell(client="codex", model="m1", test="t1", device="d1", verdict="pass",
     return {"client": client, "model": model, "model_id": model, "test": test,
             "device": device, "platform": "srx", "infra_errors": 0,
             "attempts": [{"n": 1, "outcome": outcome, "reason": "", "wall_s": wall,
-                          "tokens": tokens}],
+                          "usage": tokens}],
             "verdict": verdict, "fails_before_pass": fails}  # fmt: skip
 
 

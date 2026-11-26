@@ -1,6 +1,8 @@
-# The trap: on these devices the name servers are only reachable through the
-# mgmt_junos instance, so a plain `set system name-server` commits but does
-# not resolve. bench-srx345 and bench-csrx have no mgmt instance.
+# The trap: on management-instance devices the name servers must carry
+# `routing-instance mgmt_junos`; the config check catches a plain
+# `set system name-server`. A bare `show host` runs in the default instance
+# and always times out, so resolution is checked inside mgmt_junos.
+# bench-srx345 and bench-csrx have no mgmt instance.
 id: version-trap-dns
 vendor: junos
 setup: ""
@@ -10,6 +12,11 @@ forbidden_calls: []
 scoring: outcome
 platforms: [srx-classic, srx-evo, vsrx, csrx]
 requires: [mgmt_instance]
+# bench-srx440 (EVO) excluded: with the correct name-servers committed,
+# `show host ... routing-instance mgmt_junos` times out (";; communications
+# error to ::1#53"), 2026-11-26. Its bare `show host` resolved before the first
+# dry-check deleted the name-servers; neither form resolves since.
+devices: [bench-srx1600, bench-vsrx-inet]
 fault: |
   delete system name-server
 device_checks:
@@ -17,5 +24,5 @@ device_checks:
     must_contain:
       - name-server 1.1.1.2 routing-instance mgmt_junos
       - name-server 1.0.0.2 routing-instance mgmt_junos
-  - command: show host www.juniper.net
+  - command: show host www.juniper.net routing-instance mgmt_junos
     must_match: 'has address \d{1,3}(\.\d{1,3}){3}'
