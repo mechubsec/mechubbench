@@ -17,5 +17,7 @@ fault: |
   set security policies from-zone trust to-zone vpn policy permit-lab match application junos-icmp-all
   set security policies from-zone trust to-zone vpn policy permit-lab match application junos-ssh
 outcome:
-  report_contains: [bench-srx440, permit-lab, https]
+  # bench-srx440 and https are given in the prompt by design (the model is
+  # told where to look); permit-lab and the missing application discriminate.
+  report_contains: [bench-srx440, permit-lab, https, [junos-https, lab-apps]]
 expected_literals: [10.66.151.10, 10.66.162.10]

@@ -15,6 +15,9 @@ forbidden_calls: []
 scoring: outcome
 device_scope: path
 outcome:
+  # trust and vpn are the only zones on the path; there is nothing more
+  # specific to name, so they stay (weak: also in untrust / IPsec prose).
   report_contains: [bench-srx440, bench-srx1600, bench-srx345, hairpin-lab,
-                    10.66.250.1, 10.66.250.6, trust, vpn]
+                    permit-lab, 10.66.250.1, 10.66.250.6, trust, vpn]
+  report_order: [bench-srx440, bench-srx1600, bench-srx345]
 expected_literals: [10.66.250.1, 10.66.250.6, 10.66.151.10, 10.66.171.10]

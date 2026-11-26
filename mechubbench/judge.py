@@ -53,7 +53,8 @@ def judge_attempt(
 
     Checks, in order: report keywords in the final message (a per-device
     list in `outcome.report_contains_by_device` replaces `report_contains`;
-    a nested list is any-of), device state via `device_checks` (a check
+    a nested list is any-of; `outcome.report_order` keywords must first
+    appear in that order), device state via `device_checks` (a check
     with `devices` runs only for those devices), and (when
     `commit_confirmed_required`) that some commit since the baseline was a
     `commit confirmed`.
@@ -75,19 +76,17 @@ def judge_attempt(
     report_contains = outcome.get("report_contains_by_device", {}).get(
         device, outcome.get("report_contains", [])
     )
-    # A list item is any-of: one of its keywords must appear.
-    keywords = [kw for kw in report_contains if isinstance(kw, str)]
-    if keywords:
-        view = {"scoring": "outcome", "outcome": {"report_contains": keywords}}
+    if report_contains:
+        view = {"scoring": "outcome", "outcome": {"report_contains": report_contains}}
         scored = score_scenario(view, [], final_message=final_message)
         if not scored["pass"]:
             return False, scored["reason"]
-    message = (final_message or "").lower()
-    for options in report_contains:
-        if isinstance(options, list) and not any(
-            kw.lower() in message for kw in options
-        ):
-            return False, f"report missing any of: {options}"
+    order = outcome.get("report_order", [])
+    if order:
+        message = (final_message or "").lower()
+        positions = [message.find(keyword.lower()) for keyword in order]
+        if -1 in positions or positions != sorted(positions):
+            return False, f"report does not name {order} in that order"
 
     for check in scenario.get("device_checks", []):
         if "devices" in check and device not in check["devices"]:

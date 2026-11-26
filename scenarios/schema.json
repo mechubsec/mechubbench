@@ -117,7 +117,12 @@
         "report_contains_by_device": {
           "type": "object",
           "description": "Device name -> report_contains list that replaces report_contains for that device",
-          "additionalProperties": {"type": "array", "items": {"$ref": "#/definitions/keyword"}}
+          "additionalProperties": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/keyword"}}
+        },
+        "report_order": {
+          "type": "array",
+          "description": "Keywords whose first occurrences in final_message must appear in this order (case-insensitive)",
+          "items": {"type": "string"}
         }
       }
     },

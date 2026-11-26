@@ -314,7 +314,15 @@ def _score_outcome(
             }
 
         final_message_lower = final_message.lower()
-        missing_keywords = [kw for kw in report_contains if kw.lower() not in final_message_lower]
+        # A list item is any-of: it passes when one of its members is present.
+        missing_keywords = [
+            kw
+            for kw in report_contains
+            if not any(
+                option.lower() in final_message_lower
+                for option in (kw if isinstance(kw, list) else [kw])
+            )
+        ]
 
         if missing_keywords:
             return {

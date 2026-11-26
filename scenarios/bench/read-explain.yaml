@@ -15,11 +15,11 @@ device_scope: per_device
 outcome:
   report_contains: [permit-lab, deny-all]
   report_contains_by_device:
-    bench-srx440: [trust, untrust, vpn, permit-lab, deny-all, 10.66.181.2,
+    bench-srx440: [trust, untrust, permit-lab, deny-all, 10.66.181.2,
                    [source nat, source-nat]]
-    bench-srx345: [trust, untrust, vpn, permit-lab, deny-all, 10.66.181.2,
+    bench-srx345: [trust, untrust, permit-lab, deny-all, 10.66.181.2,
                    [source nat, source-nat]]
-    bench-srx1600: [trust, untrust, vpn, permit-lab, deny-all, 10.66.182.2,
+    bench-srx1600: [trust, untrust, permit-lab, deny-all, 10.66.182.2,
                     10.66.183.2, [source nat, source-nat]]
     # cSRX: no IPsec, no NAT.
     bench-csrx: [inside, outside, permit-lab, permit-out, deny-all]

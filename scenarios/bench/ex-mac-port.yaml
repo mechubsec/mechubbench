@@ -11,5 +11,5 @@ forbidden_calls: []
 scoring: outcome
 devices: [bench-ex2300]
 outcome:
-  report_contains: [ge-0/0/0, [br1-users, "151"]]
+  report_contains: [ge-0/0/0, [br1-users, vlan 151]]
 expected_literals: [bc:24:11:65:5a:30]

@@ -140,3 +140,12 @@ def test_device_check_limited_to_devices():
     assert judge_attempt(scenario, "r2", "", mcp, [])[0]
     assert mcp.calls == []
     assert not judge_attempt(scenario, "r1", "", mcp, [])[0]
+
+
+def test_report_order():
+    scenario = _scenario(outcome={"report_order": ["srx440", "srx1600", "srx345"]})
+    message = "SRX440 then srx1600, srx345"
+    assert judge_attempt(scenario, None, message, FakeMCP(), [])[0]
+    ok, reason = judge_attempt(scenario, None, "srx1600, srx440, srx345", FakeMCP(), [])
+    assert not ok and "order" in reason
+    assert not judge_attempt(scenario, None, "srx440 then srx345", FakeMCP(), [])[0]
