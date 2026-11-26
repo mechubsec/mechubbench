@@ -115,6 +115,9 @@ def test_pass_first_try(tmp_path, monkeypatch):
             "wall_s": 12.3,
             "usage": {"input": 100, "output": 20, "cache_read": None,
                        "cache_write": None},
+            "raw_usage": None,
+            "final_message": "pass",
+            "commits": {"bench-srx440": []},
         }
     ]  # fmt: skip
     assert cell["model_id"] == "model-exact-id"
@@ -298,11 +301,15 @@ def test_cli_matrix_wires_tokens_version_and_hermes(tmp_path, monkeypatch):
     def fake_run_matrix(scenarios, entries, devices, url, token, op, out, version,
                         golden, **kwargs):  # fmt: skip
         seen.update(entries=[(c, m) for c, m, _ in entries], token=token,
-                    version=version, timeouts=kwargs["timeouts"])  # fmt: skip
+                    version=version, timeouts=kwargs["timeouts"],
+                    overridden=kwargs["server_version_overridden"])  # fmt: skip
         return {"results": []}
 
     monkeypatch.setattr(cli.runner, "MCPClient", FakeOperator)
-    monkeypatch.setattr(cli, "ollama_models", lambda url: ["qwen3:32b", "gemma4"])
+    monkeypatch.setattr(
+        cli, "ollama_models",
+        lambda url: ["qwen3:32b", "nomic-embed-text:latest", "gemma4"],
+    )  # fmt: skip
     monkeypatch.setattr(cli.matrix, "run_matrix", fake_run_matrix)
     args = cli.build_parser().parse_args([
         "matrix", "--scenarios", str(scenario),
@@ -321,10 +328,15 @@ def test_cli_matrix_wires_tokens_version_and_hermes(tmp_path, monkeypatch):
         "token": TOKEN,
         "version": "2.8.1",
         "timeouts": {"codex": 60, "hermes": 90},
+        "overridden": False,
     }  # fmt: skip
 
     (tmp_path / "run.json").write_text("{}")
     assert args.func(args) == 1  # existing manifest needs --resume
+
+    args.resume, args.server_version = True, "2.8.0"
+    assert args.func(args) == 0
+    assert seen["version"] == "2.8.0" and seen["overridden"] is True
 
 
 def test_cli_matrix_record_golden_writes_fingerprints_only(tmp_path, monkeypatch):
@@ -372,3 +384,183 @@ def test_usage_counts_survive_redaction_on_disk(tmp_path, monkeypatch):
     [attempt] = _cell(on_disk)["attempts"]
     assert attempt["usage"] == {"input": 100, "output": 20, "cache_read": None,
                                 "cache_write": None}  # fmt: skip
+
+
+def test_per_device_attempt_guards_every_device(tmp_path, monkeypatch):
+    lab = Lab(monkeypatch)
+    _matrix(tmp_path, FakeDriver(["pass"]), inventory=[SRX, EX],
+            scenarios=[{**SCENARIO, "devices": ["bench-srx440"]}])  # fmt: skip
+    assert [e[:2] for e in lab.events] == [
+        ("baseline", "bench-srx440"), ("baseline", "bench-ex2300"),
+        ("restore", "bench-srx440"), ("restore", "bench-ex2300"),
+    ]  # fmt: skip
+
+
+def test_non_target_restore_failure_stops_run(tmp_path, monkeypatch):
+    lab = Lab(monkeypatch, restore_fails_on=2)  # 2nd restore = bench-ex2300
+    driver = FakeDriver(["fail", "pass"])
+    with pytest.raises(RuntimeError, match="bench-ex2300"):
+        _matrix(tmp_path, driver, inventory=[SRX, EX],
+                scenarios=[{**SCENARIO, "devices": ["bench-srx440"]}])  # fmt: skip
+    assert len(driver.calls) == 1
+    assert lab.restores == 2
+
+
+def test_empty_final_and_turn_cap_are_model_fails(tmp_path, monkeypatch):
+    Lab(monkeypatch)
+
+    class Driver(FakeDriver):
+        def run(self, prompt, model, mcp_url, token, timeout_s):
+            run = super().run(prompt, model, mcp_url, token, timeout_s)
+            if run.final_message == "empty":
+                run.final_message = " "
+            if run.final_message == "capped":
+                run.model_failure = "turn cap (30) reached"
+            return run
+
+    cell = _cell(_matrix(tmp_path, Driver(["empty", "capped", "pass"])))
+    assert [(a["outcome"], a["reason"]) for a in cell["attempts"]] == [
+        ("fail", "empty final message"), ("fail", "turn cap (30) reached"),
+        ("pass", "judged pass"),
+    ]  # fmt: skip
+    assert cell["infra_errors"] == 0
+
+
+def test_attempt_keeps_final_commits_and_raw_usage_redacted(tmp_path, monkeypatch):
+    lab = Lab(monkeypatch)
+    entry = "2026-11-26 10:00:00 UTC by bench via netconf commit confirmed"
+    monkeypatch.setattr(matrix, "commits_since", lambda mcp, base: [entry])
+
+    class Driver(FakeDriver):
+        def run(self, prompt, model, mcp_url, token, timeout_s):
+            run = super().run(prompt, model, mcp_url, token, timeout_s)
+            run.final_message = f"pass on bench-srx440; token {token}"
+            run.raw_usage = {"total_cost_usd": 0.5, "num_turns": 3,
+                             "usage": {"input_tok": 100}}  # fmt: skip
+            return run
+
+    monkeypatch.setattr(matrix, "judge_attempt", lambda *a: (True, "ok"))
+    _matrix(tmp_path, Driver(["pass"]))
+    text = (tmp_path / "run.json").read_text()
+    assert TOKEN not in text
+    [attempt] = _cell(json.loads(text))["attempts"]
+    assert attempt["final_message"].startswith("pass on bench-srx440; token ")
+    assert attempt["commits"] == {"bench-srx440": [entry]}
+    assert attempt["raw_usage"] == {"total_cost_usd": 0.5, "num_turns": 3,
+                                    "usage": {"input_tok": 100}}  # fmt: skip
+    assert lab.restores == 1
+
+
+def test_fault_plant_commits_excluded_from_judge(tmp_path, monkeypatch):
+    lab = Lab(monkeypatch)
+    plant = "2026-11-26 10:00:00 UTC by bench via netconf"
+    agent = "2026-11-26 10:05:00 UTC by bench via netconf"
+    history = {"bench-srx440": [], "bench-ex2300": []}
+
+    def plant_fault(mcp, device, fault):
+        history[device].insert(0, plant)
+
+    def run_and_commit(prompt, model, mcp_url, token, timeout_s):
+        history["bench-ex2300"].insert(0, agent)
+        return _run("pass")
+
+    seen = {}
+    monkeypatch.setattr(matrix, "plant_fault", plant_fault)
+    monkeypatch.setattr(matrix, "commits_since",
+                        lambda mcp, base: list(history[base.device]))  # fmt: skip
+    def judge(scenario, device, final, mcp, commits):
+        seen.update(commits)
+        return True, ""
+
+    monkeypatch.setattr(matrix, "judge_attempt", judge)
+    driver = FakeDriver([])
+    driver.run = run_and_commit
+    scenario = {**SCENARIO, "fault": "x", "read_only": True,
+                "devices": ["bench-srx440"]}  # fmt: skip
+    _matrix(tmp_path, driver, scenarios=[scenario], inventory=[SRX, EX])
+    assert seen == {"bench-srx440": [], "bench-ex2300": [agent]}
+    assert lab.restores == 2
+
+
+def test_resume_reopens_infra_error_cells(tmp_path, monkeypatch):
+    Lab(monkeypatch)
+    _matrix(tmp_path, FakeDriver(["fail", "infra", "infra", "infra"]))
+    cell = _cell(json.loads((tmp_path / "run.json").read_text()))
+    assert cell["verdict"] == "infra_error"
+    resumed = _cell(_matrix(tmp_path, FakeDriver(["pass"]), resume=True))
+    assert resumed["verdict"] == "pass"
+    assert [a["n"] for a in _counted_attempts(resumed)] == [1, 2]
+    assert resumed["fails_before_pass"] == 1
+    assert resumed["infra_errors"] == 0
+
+
+def _counted_attempts(cell):
+    return [a for a in cell["attempts"] if a["outcome"] != "infra_error"]
+
+
+def test_five_consecutive_infra_errors_stop_the_run(tmp_path, monkeypatch):
+    Lab(monkeypatch)
+    second = {"id": "flow-trace", "prompt": "trace"}
+    driver = FakeDriver(["infra"] * 6)
+    with pytest.raises(RuntimeError, match="5 consecutive infra errors"):
+        _matrix(tmp_path, driver, scenarios=[SCENARIO, second])
+    assert len(driver.calls) == 5  # 3 in the first cell, 2 in the second
+    on_disk = json.loads((tmp_path / "run.json").read_text())
+    assert len(on_disk["results"][1]["attempts"]) == 2
+    assert on_disk["finished"] is None
+
+
+def test_resume_refuses_changed_server_or_corpus(tmp_path, monkeypatch):
+    Lab(monkeypatch)
+    _matrix(tmp_path, FakeDriver(["fail"] * 3))
+    path = tmp_path / "run.json"
+    with pytest.raises(ValueError, match="server_version"):
+        matrix.run_matrix([SCENARIO], [("codex", "m", FakeDriver([]))], [SRX],
+                          "http://bench/mcp", TOKEN, object(), path, "2.9.0", {},
+                          resume=True, agent_mcp="a")  # fmt: skip
+    manifest = json.loads(path.read_text())
+    manifest["corpus_git_sha"] = "0" * 40
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="corpus_git_sha"):
+        _matrix(tmp_path, FakeDriver([]), resume=True)
+
+
+def test_server_version_override_and_limits_recorded(tmp_path, monkeypatch):
+    Lab(monkeypatch)
+    driver = FakeDriver(["pass"])
+    driver.max_turns = 30
+    on_disk_path = tmp_path / "run.json"
+    _matrix(tmp_path, driver, server_version_overridden=True,
+            timeouts={"codex": 60})  # fmt: skip
+    on_disk = json.loads(on_disk_path.read_text())
+    assert on_disk["server_version_overridden"] is True
+    assert on_disk["limits"] == {"codex": {"timeout_s": 60, "max_turns": 30}}
+
+
+def test_warm_up_once_per_model_and_failure_skips_model(tmp_path, monkeypatch):
+    Lab(monkeypatch)
+    second = {"id": "flow-trace", "prompt": "trace"}
+
+    class Warming(FakeDriver):
+        def __init__(self, outcomes, failure=None):
+            super().__init__(outcomes)
+            self.failure = failure
+            self.warmed = []
+
+        def warm_up(self, model):
+            self.warmed.append(model)
+            return self.failure
+
+    cold = Warming([], failure="Ollama warm-up of m1 failed: refused")
+    warm = Warming(["pass", "pass"])
+    manifest = matrix.run_matrix(
+        [SCENARIO, second], [("hermes", "m1", cold), ("hermes", "m2", warm)],
+        [SRX], "http://bench/mcp", TOKEN, object(), tmp_path / "run.json",
+        "2.8.1", {}, agent_mcp="a",
+    )  # fmt: skip
+    assert cold.warmed == ["m1"] and cold.calls == []
+    assert warm.warmed == ["m2"] and len(warm.calls) == 2
+    assert {c["model"] for c in manifest["results"]} == {"m2"}
+    assert manifest["notes"] == [
+        "hermes m1: not run, Ollama warm-up of m1 failed: refused"
+    ]

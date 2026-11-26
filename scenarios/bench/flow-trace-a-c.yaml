@@ -13,6 +13,7 @@ prompt: >-
 expected_calls: []
 forbidden_calls: []
 scoring: outcome
+read_only: true
 device_scope: path
 outcome:
   # trust and vpn are the only zones on the path; there is nothing more

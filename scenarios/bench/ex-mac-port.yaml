@@ -9,6 +9,7 @@ prompt: >-
 expected_calls: []
 forbidden_calls: []
 scoring: outcome
+read_only: true
 devices: [bench-ex2300]
 outcome:
   report_contains: [ge-0/0/0, [br1-users, vlan 151]]

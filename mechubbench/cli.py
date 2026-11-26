@@ -450,7 +450,12 @@ def _matrix_entries(config: dict, wanted: list[str]) -> list[tuple]:
             driver = HermesDriver(settings["ollama_url"])
             models = settings["models"]
             if models == "ollama":
-                models = ollama_models(settings["ollama_url"])
+                # Embedding models cannot chat; they would only add infra errors.
+                models = [
+                    name
+                    for name in ollama_models(settings["ollama_url"])
+                    if "embed" not in name
+                ]
             entries.extend((client, model, driver) for model in models)
         else:
             raise ValueError(f"unknown client {client!r}")
@@ -542,6 +547,7 @@ def cmd_matrix(args: argparse.Namespace) -> int:
             hosts=hosts,
             timeouts={name: config[name].get("timeout_s", 900) for name in wanted},
             resume=args.resume,
+            server_version_overridden=bool(args.server_version),
         )
     except (RuntimeError, ValueError, KeyError, runner.MCPError) as e:
         logger.error(f"Matrix stopped: {e}")

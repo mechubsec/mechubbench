@@ -121,7 +121,7 @@
         },
         "report_order": {
           "type": "array",
-          "description": "Keywords whose first occurrences in final_message must appear in this order (case-insensitive)",
+          "description": "Keywords that must occur in final_message in this order somewhere (case-insensitive); earlier out-of-order mentions are ignored",
           "items": {"type": "string"}
         }
       }
@@ -166,6 +166,10 @@
       }
     },
     "commit_confirmed_required": {"type": "boolean"},
+    "read_only": {
+      "type": "boolean",
+      "description": "Fail the attempt if any device has a commit since baseline other than the fault plant"
+    },
     "domain": {
       "type": "string",
       "description": "Config domain for smart truncation (e.g., 'system ntp', 'security policies')"

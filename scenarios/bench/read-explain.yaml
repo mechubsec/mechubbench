@@ -10,6 +10,7 @@ prompt: >-
 expected_calls: []
 forbidden_calls: []
 scoring: outcome
+read_only: true
 platforms: [srx-classic, srx-evo, vsrx, csrx]
 device_scope: per_device
 outcome:

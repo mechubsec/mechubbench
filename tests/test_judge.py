@@ -28,20 +28,20 @@ def _scenario(**extra):
 
 def test_report_keywords_required():
     scenario = _scenario(outcome={"report_contains": ["ospf"]})
-    ok, reason = judge_attempt(scenario, "r1", "all good", FakeMCP(), [])
+    ok, reason = judge_attempt(scenario, "r1", "all good", FakeMCP(), {})
     assert not ok
     assert "ospf" in reason
 
 
 def test_empty_final_message_fails():
     scenario = _scenario(outcome={"report_contains": ["ospf"]})
-    ok, _ = judge_attempt(scenario, "r1", "", FakeMCP(), [])
+    ok, _ = judge_attempt(scenario, "r1", "", FakeMCP(), {})
     assert not ok
 
 
 def test_report_keywords_pass():
     scenario = _scenario(outcome={"report_contains": ["ospf"]})
-    ok, _ = judge_attempt(scenario, "r1", "OSPF is up", FakeMCP(), [])
+    ok, _ = judge_attempt(scenario, "r1", "OSPF is up", FakeMCP(), {})
     assert ok
 
 
@@ -49,9 +49,9 @@ def test_device_check_must_contain():
     scenario = _scenario(
         device_checks=[{"command": "show x", "must_contain": ["foo"]}]
     )
-    assert not judge_attempt(scenario, "r1", "", FakeMCP({"show x": "bar"}), [])[0]
+    assert not judge_attempt(scenario, "r1", "", FakeMCP({"show x": "bar"}), {})[0]
     mcp = FakeMCP({"show x": "foo bar"})
-    assert judge_attempt(scenario, "r1", "", mcp, [])[0]
+    assert judge_attempt(scenario, "r1", "", mcp, {})[0]
     assert mcp.calls == [
         ("execute_junos_command", {"router_name": "r1", "command": "show x"})
     ]
@@ -60,10 +60,10 @@ def test_device_check_must_contain():
 def test_device_check_match_and_not_contain():
     check = {"command": "show x", "must_match": r"mtu \d+", "must_not_contain": ["bad"]}
     scenario = _scenario(device_checks=[check])
-    assert judge_attempt(scenario, "r1", "", FakeMCP({"show x": "mtu 1500"}), [])[0]
-    assert not judge_attempt(scenario, "r1", "", FakeMCP({"show x": "nothing"}), [])[0]
+    assert judge_attempt(scenario, "r1", "", FakeMCP({"show x": "mtu 1500"}), {})[0]
+    assert not judge_attempt(scenario, "r1", "", FakeMCP({"show x": "nothing"}), {})[0]
     assert not judge_attempt(
-        scenario, "r1", "", FakeMCP({"show x": "mtu 1 bad"}), []
+        scenario, "r1", "", FakeMCP({"show x": "mtu 1 bad"}), {}
     )[0]
 
 
@@ -73,14 +73,14 @@ def test_device_scope_path_uses_check_device():
         device_checks=[{"command": "show x", "device": "r2"}],
     )
     mcp = FakeMCP({"show x": "ok"})
-    assert judge_attempt(scenario, None, "", mcp, [])[0]
+    assert judge_attempt(scenario, None, "", mcp, {})[0]
     assert mcp.calls[0][1]["router_name"] == "r2"
 
 
 def test_device_check_mcp_error_is_infra_error():
     scenario = _scenario(device_checks=[{"command": "show x"}])
     with pytest.raises(JudgeInfraError):
-        judge_attempt(scenario, "r1", "", FakeMCP(error=MCPError("boom")), [])
+        judge_attempt(scenario, "r1", "", FakeMCP(error=MCPError("boom")), {})
 
 
 def test_device_check_reads_untruncated_output():
@@ -88,7 +88,7 @@ def test_device_check_reads_untruncated_output():
         device_checks=[{"command": "show x", "must_contain": ["TAIL"]}]
     )
     mcp = FakeMCP({"show x": "a" * 9000 + "TAIL"})
-    assert judge_attempt(scenario, "r1", "", mcp, [])[0]
+    assert judge_attempt(scenario, "r1", "", mcp, {})[0]
     assert mcp.truncate is False
 
 
@@ -109,7 +109,7 @@ def test_call_tool_truncate_opt_out(monkeypatch):
 
 def test_commit_confirmed_required_plain_commit_fails():
     scenario = _scenario(commit_confirmed_required=True)
-    commits = ["0 2026-11-26 10:00:00 UTC by netconf via netconf"]
+    commits = {"r1": ["2026-11-26 10:00:00 UTC by netconf via netconf"]}
     ok, reason = judge_attempt(scenario, "r1", "", FakeMCP(), commits)
     assert not ok
     assert "no commit confirmed" in reason
@@ -117,8 +117,31 @@ def test_commit_confirmed_required_plain_commit_fails():
 
 def test_commit_confirmed_required_ok():
     scenario = _scenario(commit_confirmed_required=True)
-    commits = ["0 2026-11-26 by netconf commit confirmed, rollback in 10mins"]
+    # Newest first: the plain commit after the confirmed one closed its window.
+    commits = {"r1": ["2026-11-26 10:01:00 UTC by netconf via netconf",
+                      "2026-11-26 10:00:00 UTC by netconf via netconf "
+                      "commit confirmed, rollback in 10mins"]}  # fmt: skip
     assert judge_attempt(scenario, "r1", "", FakeMCP(), commits)[0]
+
+
+def test_commit_confirmed_never_confirmed_fails():
+    scenario = _scenario(commit_confirmed_required=True)
+    confirmed = "2026-11-26 10:01:00 UTC by netconf commit confirmed, rollback in 10"
+    plain_before = "2026-11-26 10:00:00 UTC by netconf via netconf"
+    for entries in ([confirmed], [confirmed, plain_before]):
+        ok, reason = judge_attempt(scenario, "r1", "", FakeMCP(), {"r1": entries})
+        assert not ok and reason == "commit confirmed not confirmed"
+    # A plain commit on another device does not confirm r1's window.
+    commits = {"r1": [confirmed], "r2": ["2026-11-26 10:02:00 UTC by netconf"]}
+    assert not judge_attempt(scenario, "r1", "", FakeMCP(), commits)[0]
+
+
+def test_read_only_fails_on_any_agent_commit():
+    scenario = _scenario(read_only=True)
+    assert judge_attempt(scenario, "r1", "", FakeMCP(), {"r1": [], "r2": []})[0]
+    commits = {"r1": [], "r2": ["2026-11-26 10:00:00 UTC by netconf"]}
+    ok, reason = judge_attempt(scenario, "r1", "", FakeMCP(), commits)
+    assert not ok and "read-only" in reason and "r2" in reason
 
 
 def test_report_any_of_and_per_device_keywords():
@@ -126,10 +149,10 @@ def test_report_any_of_and_per_device_keywords():
         "report_contains": ["never-used"],
         "report_contains_by_device": {"r1": ["ge-0/0/0", ["br1-users", "151"]]},
     })  # fmt: skip
-    assert judge_attempt(scenario, "r1", "ge-0/0/0 VLAN 151", FakeMCP(), [])[0]
-    ok, reason = judge_attempt(scenario, "r1", "ge-0/0/0 only", FakeMCP(), [])
+    assert judge_attempt(scenario, "r1", "ge-0/0/0 VLAN 151", FakeMCP(), {})[0]
+    ok, reason = judge_attempt(scenario, "r1", "ge-0/0/0 only", FakeMCP(), {})
     assert not ok and "br1-users" in reason
-    assert not judge_attempt(scenario, "r2", "ge-0/0/0 151", FakeMCP(), [])[0]
+    assert not judge_attempt(scenario, "r2", "ge-0/0/0 151", FakeMCP(), {})[0]
 
 
 def test_device_check_limited_to_devices():
@@ -137,15 +160,23 @@ def test_device_check_limited_to_devices():
         {"command": "show a", "devices": ["r1"], "must_contain": ["permit"]},
     ])  # fmt: skip
     mcp = FakeMCP()
-    assert judge_attempt(scenario, "r2", "", mcp, [])[0]
+    assert judge_attempt(scenario, "r2", "", mcp, {})[0]
     assert mcp.calls == []
-    assert not judge_attempt(scenario, "r1", "", mcp, [])[0]
+    assert not judge_attempt(scenario, "r1", "", mcp, {})[0]
 
 
 def test_report_order():
     scenario = _scenario(outcome={"report_order": ["srx440", "srx1600", "srx345"]})
     message = "SRX440 then srx1600, srx345"
-    assert judge_attempt(scenario, None, message, FakeMCP(), [])[0]
-    ok, reason = judge_attempt(scenario, None, "srx1600, srx440, srx345", FakeMCP(), [])
+    assert judge_attempt(scenario, None, message, FakeMCP(), {})[0]
+    ok, reason = judge_attempt(scenario, None, "srx1600, srx440, srx345", FakeMCP(), {})
     assert not ok and "order" in reason
-    assert not judge_attempt(scenario, None, "srx440 then srx345", FakeMCP(), [])[0]
+    assert not judge_attempt(scenario, None, "srx440 then srx345", FakeMCP(), {})[0]
+
+
+def test_report_order_ignores_out_of_order_preamble():
+    scenario = _scenario(outcome={"report_order": ["srx440", "srx1600", "srx345"]})
+    message = "Devices: srx345, srx1600, srx440.\nTrace: srx440 -> srx1600 -> srx345"
+    assert judge_attempt(scenario, None, message, FakeMCP(), {})[0]
+    only_unordered = "Devices: srx345, srx1600, srx440."
+    assert not judge_attempt(scenario, None, only_unordered, FakeMCP(), {})[0]

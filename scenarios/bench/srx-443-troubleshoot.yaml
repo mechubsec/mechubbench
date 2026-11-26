@@ -11,6 +11,7 @@ prompt: >-
 expected_calls: []
 forbidden_calls: []
 scoring: outcome
+read_only: true
 devices: [bench-srx440]
 fault: |
   delete security policies from-zone trust to-zone vpn policy permit-lab match application lab-apps

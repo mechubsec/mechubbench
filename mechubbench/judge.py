@@ -42,29 +42,55 @@ def _check_device(check: dict, device: str | None, mcp) -> str | None:
     return None
 
 
+def _in_order(message: str, keywords: list[str]) -> bool:
+    """True if each keyword occurs after the previous one somewhere in message."""
+    start = 0
+    for keyword in keywords:
+        found = message.find(keyword.lower(), start)
+        if found == -1:
+            return False
+        start = found + len(keyword)
+    return True
+
+
+def _confirmed_window_closed(entries: list[str]) -> bool | None:
+    """None: no `commit confirmed`; else whether a plain commit followed one.
+
+    ``entries`` are newest first, so "followed" means a lower index.
+    """
+    confirmed = [i for i, entry in enumerate(entries) if "commit confirmed" in entry]
+    if not confirmed:
+        return None
+    return any(
+        "commit confirmed" not in entry for entry in entries[: max(confirmed)]
+    )
+
+
 def judge_attempt(
     scenario: dict,
     device: str | None,
     final_message: str,
     mcp,
-    commits_since_baseline: list[str],
+    commits_by_device: dict[str, list[str]],
 ) -> tuple[bool, str]:
     """Judge one attempt by script.
 
-    Checks, in order: report keywords in the final message (a per-device
-    list in `outcome.report_contains_by_device` replaces `report_contains`;
-    a nested list is any-of; `outcome.report_order` keywords must first
-    appear in that order), device state via `device_checks` (a check
-    with `devices` runs only for those devices), and (when
-    `commit_confirmed_required`) that some commit since the baseline was a
-    `commit confirmed`.
+    Checks, in order: no agent commit on any device when `read_only`;
+    report keywords in the final message (a per-device list in
+    `outcome.report_contains_by_device` replaces `report_contains`; a nested
+    list is any-of; `outcome.report_order` keywords must occur in that order
+    somewhere, earlier out-of-order mentions are ignored), device state via
+    `device_checks` (a check with `devices` runs only for those devices), and
+    (when `commit_confirmed_required`) that a `commit confirmed` was later
+    confirmed by a plain commit on the same device.
 
     Args:
         scenario: Scenario dict (outcome.report_contains, device_checks, ...).
         device: Target device for per_device scenarios (checks may override it).
         final_message: The client's final answer text.
         mcp: Operator MCPClient (anything with call_tool).
-        commits_since_baseline: `show system commit` entry lines newer than baseline.
+        commits_by_device: Device -> agent `show system commit` entries newer
+            than the baseline (fault-plant commits excluded), newest first.
 
     Returns:
         (passed, reason)
@@ -72,6 +98,10 @@ def judge_attempt(
     Raises:
         JudgeInfraError: MCP error while running a device check (infra, not a fail).
     """
+    if scenario.get("read_only"):
+        changed = sorted(name for name, entries in commits_by_device.items() if entries)
+        if changed:
+            return False, f"read-only scenario but commits on {', '.join(changed)}"
     outcome = scenario.get("outcome", {})
     report_contains = outcome.get("report_contains_by_device", {}).get(
         device, outcome.get("report_contains", [])
@@ -82,11 +112,8 @@ def judge_attempt(
         if not scored["pass"]:
             return False, scored["reason"]
     order = outcome.get("report_order", [])
-    if order:
-        message = (final_message or "").lower()
-        positions = [message.find(keyword.lower()) for keyword in order]
-        if -1 in positions or positions != sorted(positions):
-            return False, f"report does not name {order} in that order"
+    if order and not _in_order((final_message or "").lower(), order):
+        return False, f"report does not name {order} in that order"
 
     for check in scenario.get("device_checks", []):
         if "devices" in check and device not in check["devices"]:
@@ -95,9 +122,11 @@ def judge_attempt(
         if failure:
             return False, failure
 
-    if scenario.get("commit_confirmed_required") and not any(
-        "commit confirmed" in entry for entry in commits_since_baseline
-    ):
-        return False, "no commit confirmed found since baseline"
+    if scenario.get("commit_confirmed_required"):
+        windows = [_confirmed_window_closed(e) for e in commits_by_device.values()]
+        if not any(window is not None for window in windows):
+            return False, "no commit confirmed found since baseline"
+        if not any(windows):
+            return False, "commit confirmed not confirmed"
 
     return True, "all checks passed"
