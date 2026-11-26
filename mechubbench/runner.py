@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -28,6 +29,16 @@ DEVICE_ARG_KEYS = ("device", "router", "router_name")
 class MCPError(Exception):
     """MCP protocol or tool execution error."""
     pass
+
+
+class MCPSessionExpired(MCPError):
+    """The server no longer knows this client's MCP session."""
+
+
+_SESSION_GONE = re.compile(
+    r"session (?:not found|expired|unknown|invalid)|(?:unknown|invalid|expired)"
+    r" session|no such session"
+)
 
 
 class MCPClient:
@@ -132,6 +143,16 @@ class MCPClient:
             )
             response.raise_for_status()
             return response
+        except httpx.HTTPStatusError as e:
+            body = getattr(e.response, "text", "")
+            body = body if isinstance(body, str) else ""
+            if e.response.status_code in (400, 404) and "session" in body.lower():
+                raise MCPSessionExpired(
+                    f"HTTP {e.response.status_code}: {body[:200]}".replace(
+                        self.token, "[REDACTED]"
+                    )
+                ) from None
+            raise MCPError(f"HTTP error: {str(e).replace(self.token, '[REDACTED]')}")
         except httpx.HTTPError as e:
             # Redact token from error message
             error_msg = str(e)
@@ -201,9 +222,23 @@ class MCPClient:
         Returns:
             Tool result dict (parsed from JSON in text content)
 
+        A call rejected because the server dropped the session (idle expiry,
+        restart) re-initializes once and is retried once; the server never
+        ran the rejected call, so the retry cannot apply anything twice.
+
         Raises:
             MCPError: If MCP returns error or result format is unexpected
         """
+        try:
+            return self._call_tool_once(tool_name, arguments, truncate)
+        except MCPSessionExpired:
+            logger.info("MCP session expired; re-initializing once")
+            self._initialize()
+            return self._call_tool_once(tool_name, arguments, truncate)
+
+    def _call_tool_once(
+        self, tool_name: str, arguments: dict[str, Any], truncate: bool
+    ) -> dict:
         self._request_id += 1
         payload = {
             "jsonrpc": "2.0",
@@ -221,6 +256,8 @@ class MCPClient:
         # Check for JSON-RPC error
         if "error" in data:
             error_msg = data["error"].get("message", "Unknown error")
+            if _SESSION_GONE.search(str(error_msg).lower()):
+                raise MCPSessionExpired(f"MCP error: {error_msg}")
             raise MCPError(f"MCP error: {error_msg}")
 
         # Extract result from content
