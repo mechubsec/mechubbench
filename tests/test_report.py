@@ -43,7 +43,7 @@ def test_average_excludes_full_failure():
     html = render_report(_run(
         _cell(device="a"), _cell(device="b", verdict="full_failure", fails=3,
                                  tokens=big)))  # fmt: skip
-    assert '<td class="n">150</td>' in html
+    assert '<td class="n">156</td>' in html  # 100 + 50 + 5 + 1
     assert "10,000" not in html
 
 
@@ -126,3 +126,23 @@ def test_all_null_tokens_is_no_data_not_zero():
     assert 'data-id="codex \u00b7 m1|t1|run"' in html  # wall bar still drawn
     tokens_svg = html.split("<svg")[1].split("</svg>")[0]
     assert "data-id" not in tokens_svg and "0 pass" not in tokens_svg
+
+
+def test_total_tokens_include_cache_and_nulls_add_nothing():
+    tokens = {"input": 10, "output": 5, "cache_read": 1000, "cache_write": None}
+    html = render_report(_run(_cell(tokens=tokens)))
+    tokens_svg = html.split("<svg")[1].split("</svg>")[0]
+    assert "1,015 pass" in tokens_svg
+    assert '<td class="n">1,000</td>' in html  # split columns kept
+    assert "cache read + cache write" in html
+
+
+def test_header_shows_corpus_shas_and_limits():
+    run = _run(_cell())
+    run["corpus_git_sha"] = "1234567890abcdef"
+    run["limits"] = {"hermes": {"timeout_s": 900, "max_turns": 30},
+                     "codex": {"timeout_s": 600, "max_turns": None}}  # fmt: skip
+    base = {**_run(_cell()), "corpus_git_sha": "fedcba0987654321"}
+    html = render_report(run, base)
+    assert "corpus 1234567890ab, fedcba098765" in html
+    assert "Limits: codex 600 s, no turn cap; hermes 900 s, 30 turns" in html

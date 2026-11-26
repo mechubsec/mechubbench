@@ -6,8 +6,9 @@ from html import escape
 from statistics import mean
 
 FOOTNOTE = (
-    "Clients count tokens slightly differently; cache columns are blank "
-    "where a client does not report them."
+    "Total tokens = input + cache read + cache write + output: every token "
+    "the model processed. Clients count tokens slightly differently; a cache "
+    "count a client does not report adds nothing and its column is blank."
 )
 TOKEN_KEYS = ("input", "output", "cache_read", "cache_write")
 
@@ -46,11 +47,22 @@ def _passing_attempt(cell: dict) -> dict | None:
 
 
 def _total_tokens(attempt: dict) -> int | None:
-    """Input + output; None when neither is reported (no data, not zero)."""
+    """All tokens processed (null counts as 0); None when none is reported."""
     tokens = attempt.get("usage") or {}
-    if tokens.get("input") is None and tokens.get("output") is None:
+    counts = [tokens.get(key) for key in TOKEN_KEYS]
+    if all(count is None for count in counts):
         return None
-    return (tokens.get("input") or 0) + (tokens.get("output") or 0)
+    return sum(count or 0 for count in counts)
+
+
+def _limits(run: dict) -> str:
+    """Per-client limits from the manifest, e.g. ``hermes 900 s, 30 turns``."""
+    parts = []
+    for client, limit in sorted((run.get("limits") or {}).items()):
+        turns = limit.get("max_turns")
+        cap = f"{turns} turns" if turns else "no turn cap"
+        parts.append(f"{client} {limit.get('timeout_s')} s, {cap}")
+    return "; ".join(parts)
 
 
 def _mean_or_none(values: list) -> float | None:
@@ -242,6 +254,8 @@ def render_report(run: dict, baseline: dict | None = None) -> str:
     labels = sorted({m for m, _ in this_run} | {m for m, _ in base_run})
     runs = [run] + ([baseline] if baseline else [])
     versions = ", ".join(escape(str(r.get("server_version"))) for r in runs)
+    corpus = ", ".join(escape(str(r.get("corpus_git_sha"))[:12]) for r in runs)
+    limits = _limits(run)
     ids = " vs ".join(escape(str(r.get("run_id"))) for r in reversed(runs))
 
     legend = (
@@ -290,7 +304,9 @@ def render_report(run: dict, baseline: dict | None = None) -> str:
         f"<title>mechubbench report</title><style>{CSS}</style></head><body>"
         f"<h1>mechubbench report</h1>"
         f'<p class="muted">Run {ids}<br>Server {versions} &middot; '
+        f"corpus {corpus} &middot; "
         f'{escape(str(run.get("started")))}<br>'
+        f'{"Limits: " + escape(limits) + "<br>" if limits else ""}'
         f'{"; ".join(escape(m) for m in labels)}</p>'
         f"{_ollama_flag(run)}<h2>Summary</h2>{summary}"
         f"<h2>Pass rate and averages (passes only)</h2>{_averages(run, labels)}"
