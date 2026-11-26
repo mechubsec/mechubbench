@@ -85,6 +85,9 @@ class FakeMCP:
             device.plain_commit(config)
             device.confirm_pending = False
             return {"committed": True, "diff": "", "version": arguments["version"]}
+        if tool_name == "discard_candidate":
+            device.config = device.history[0][1]  # back to the committed config
+            return {"discarded": True}
         if tool_name == "load_and_commit_config":
             device.plain_commit(device.config + "+" + arguments["config_text"])
             return {"committed": True}
@@ -230,12 +233,14 @@ def test_restore_readonly_noop():
 
 def test_restore_fingerprint_mismatch_raises():
     device, mcp, baseline = _setup()
-    device.config = "drifted"  # uncommitted residue: no commit entry
+    # Committed residue with no commit entry: discard cannot undo it.
+    device.history[0] = (device.history[0][0], "drifted")
+    device.config = "drifted"
     with pytest.raises(RuntimeError):
         restore(mcp, baseline)
 
 
-def test_restore_dirty_candidate_caught_by_fingerprint():
+def test_restore_discards_dirty_candidate_before_fingerprint():
     device, mcp, baseline = _setup()
     device.plain_commit("changed")
     original = mcp.call_tool
@@ -247,8 +252,13 @@ def test_restore_dirty_candidate_caught_by_fingerprint():
         return result
 
     mcp.call_tool = leave_candidate_dirty
-    with pytest.raises(RuntimeError, match="fingerprint mismatch"):
-        restore(mcp, baseline)
+    mcp.calls.clear()
+    restore(mcp, baseline)
+    assert device.config == "base"
+    order = [name for name, _ in mcp.calls if name != "execute_junos_command"]
+    assert order[-3:] == [
+        "rollback_config", "discard_candidate", "get_junos_candidate_fingerprint"
+    ]
 
 
 def _override(mcp, tool, value):

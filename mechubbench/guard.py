@@ -214,8 +214,8 @@ def restore(mcp, baseline: Baseline, agent_mcp=None) -> None:
 
     Confirms change-set ops awaiting confirmation (with `agent_mcp`, the
     opener; required when one is pending), then rolls back every commit
-    since the baseline in one plain commit, then checks the fingerprint.
-    With no commits since the baseline only the fingerprint is checked.
+    since the baseline in one plain commit, discards any uncommitted
+    candidate, then checks the fingerprint.
     Safe to call after an attempt that raised midway.
 
     Raises:
@@ -224,6 +224,9 @@ def restore(mcp, baseline: Baseline, agent_mcp=None) -> None:
     try:
         _confirm_awaiting_operations(mcp, agent_mcp, baseline.device)
         _rollback_to_baseline(mcp, baseline)
+        # An uncommitted candidate left by the attempt would fail the
+        # fingerprint check; discarding a clean candidate is a no-op.
+        mcp.call_tool("discard_candidate", {"router_name": baseline.device})
     except (MCPError, KeyError, AttributeError, TypeError) as exc:
         raise RuntimeError(f"restore of {baseline.device} failed: {exc!r}") from None
     # The candidate fingerprint is the real gate: junos_config_diff v0
