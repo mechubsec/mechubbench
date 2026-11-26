@@ -79,6 +79,12 @@ class FakeMCP:
             assert truncate is False
             return device.show_system_commit()
         if tool_name == "rollback_config":
+            if device.confirm_pending:
+                # rust-junosmcp 2.8.1 refuses a rollback inside an open window.
+                raise MCPError(
+                    "Tool execution failed: active commit-confirmed window "
+                    "[code=commit_confirmed_active]"
+                )
             assert arguments["commit"] is True
             assert arguments["confirm_timeout_mins"] == 0
             config = device.history[arguments["version"]][1]
@@ -91,6 +97,10 @@ class FakeMCP:
         if tool_name == "load_and_commit_config":
             device.plain_commit(device.config + "+" + arguments["config_text"])
             return {"committed": True}
+        if tool_name == "confirm_commit":
+            device.plain_commit(device.config)
+            device.confirm_pending = False
+            return {"confirmed": True}
         if tool_name == "list_junos_change_sets":
             return [
                 cs for cs in self.change_sets if cs["device"] == _device_of(arguments)
@@ -151,12 +161,14 @@ def test_restore_after_plain_commit():
 
 
 def test_restore_with_pending_confirmed():
-    """A CLI-level commit confirmed: the rollback commit itself ends the window."""
+    """A direct commit confirmed: confirm_commit closes the window, then roll back."""
     device, mcp, baseline = _setup()
     device.confirmed_commit("changed")
     restore(mcp, baseline)
+    assert mcp.names("confirm_commit") == ["confirm_commit"]
     rollbacks = [args for name, args in mcp.calls if name == "rollback_config"]
-    assert [args["version"] for args in rollbacks] == [1]
+    # The refused attempt (1 back), then the retry past the confirming commit.
+    assert [args["version"] for args in rollbacks] == [1, 2]
     assert not device.confirm_pending
     assert device.config == "base"
 

@@ -194,9 +194,20 @@ def _rollback_to_baseline(mcp, baseline: Baseline) -> None:
     versions_back = len(commits_since(mcp, baseline))
     if versions_back == 0:
         return
+    try:
+        _rollback(mcp, device, versions_back)
+    except MCPError as exc:
+        # The server refuses a rollback inside a direct commit-confirmed
+        # window; close it, then roll back past the confirming commit too.
+        if "commit_confirmed_active" not in str(exc):
+            raise
+        mcp.call_tool("confirm_commit", {"device": device})
+        _rollback(mcp, device, len(commits_since(mcp, baseline)))
+
+
+def _rollback(mcp, device: str, versions_back: int) -> None:
     if versions_back > _MAX_ROLLBACK:
         raise RuntimeError(f"{versions_back} commits since baseline on {device}")
-    # A plain commit also ends any CLI-level commit-confirmed window.
     mcp.call_tool(
         "rollback_config",
         {
