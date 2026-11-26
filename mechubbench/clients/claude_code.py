@@ -11,6 +11,7 @@ from pathlib import Path
 from mechubbench.clients.base import (
     AttemptUsage,
     ClientRun,
+    Parsed,
     client_env,
     copy_login,
     execute,
@@ -23,33 +24,47 @@ from mechubbench.clients.base import (
 REAL_CREDENTIALS = Path.home() / ".claude" / ".credentials.json"
 
 
-def parse_claude(stdout: str) -> tuple[str, AttemptUsage | None, str | None]:
-    """Parse `--output-format json` stdout into (final, usage, model_id).
+RAW_KEYS = ("total_cost_usd", "num_turns", "duration_api_ms", "usage", "modelUsage")
+MODEL_USAGE_KEYS = (
+    "inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens"
+)  # fmt: skip
 
-    An error result or one that billed no model (empty ``modelUsage``) has no usage.
+
+def _requested_model(models: list[str], requested: str | None) -> str | None:
+    """The modelUsage key for the requested model, else the first key."""
+    for key in models:
+        if requested and (key == requested or requested in key):
+            return key
+    return models[0] if models else None
+
+
+def parse_claude(stdout: str, requested: str | None = None) -> Parsed:
+    """Parse `--output-format json` stdout.
+
+    The model id is the ``modelUsage`` key matching ``requested`` (helper
+    models such as a Haiku summariser also appear there); usage is summed
+    over every ``modelUsage`` entry, since all of them billed this attempt.
+    An error result or one that billed no model (empty ``modelUsage``) has
+    no usage.
     """
     lines = [line for line in stdout.splitlines() if line.strip()]
     if not lines:
-        return "", None, None
+        return Parsed("", None, None)
     try:
         result = json.loads(lines[-1])
     except ValueError:
-        return "", None, None
+        return Parsed("", None, None)
     final = result.get("result") or ""
-    models = list(result.get("modelUsage") or {})
-    usage = result.get("usage") or {}
-    if result.get("is_error") or not models or not usage:
-        return final, None, models[0] if models else None
-    return (
-        final,
-        AttemptUsage(
-            input_tokens=usage.get("input_tokens"),
-            output_tokens=usage.get("output_tokens"),
-            cache_read_tokens=usage.get("cache_read_input_tokens"),
-            cache_write_tokens=usage.get("cache_creation_input_tokens"),
-        ),
-        models[0],
-    )
+    model_usage = result.get("modelUsage") or {}
+    model_id = _requested_model(list(model_usage), requested)
+    raw = {key: result[key] for key in RAW_KEYS if key in result}
+    if result.get("is_error") or not model_usage:
+        return Parsed(final, None, model_id, raw)
+    totals = [
+        sum(entry.get(key) or 0 for entry in model_usage.values())
+        for key in MODEL_USAGE_KEYS
+    ]
+    return Parsed(final, AttemptUsage(*totals), model_id, raw)
 
 
 class ClaudeCodeDriver:
@@ -109,7 +124,7 @@ class ClaudeCodeDriver:
                 home,
                 timeout_s,
                 self.runner,
-                parse_claude,
+                lambda stdout: parse_claude(stdout, model),
             )
         finally:
             try:

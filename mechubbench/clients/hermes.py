@@ -14,6 +14,7 @@ import yaml
 from mechubbench.clients.base import (
     AttemptUsage,
     ClientRun,
+    Parsed,
     client_env,
     execute,
     isolated_home,
@@ -22,6 +23,7 @@ from mechubbench.clients.base import (
 )
 
 PROVIDER = "bench-ollama"
+MAX_TURNS = 30
 
 
 def ollama_models(url: str) -> list[str]:
@@ -31,13 +33,13 @@ def ollama_models(url: str) -> list[str]:
     return [model["name"] for model in response.json().get("models", [])]
 
 
-def parse_hermes(
-    stdout: str, usage_file: Path | None
-) -> tuple[str, AttemptUsage | None, str | None]:
-    """Parse Hermes stream-json into (final, usage, model_id).
+def parse_hermes(stdout: str, usage_file: Path | None) -> Parsed:
+    """Parse Hermes stream-json.
 
-    Counts come from ``usage_file`` when it exists, else the stream's result event.
-    A result carrying an error or a non-zero exit code has no usage.
+    Counts come from ``usage_file`` when it exists, else the stream's result
+    event. A result carrying an ``error`` (provider/API) has no usage. A
+    non-zero ``exit_code`` without one is the ``--max-turns`` cap (captured
+    live, fixture ``hermes_max_turns.jsonl``): a model failure.
     """
     events = json_lines(stdout)
     model_id = next(
@@ -45,10 +47,14 @@ def parse_hermes(
     )
     result = next((event for event in events if event.get("type") == "result"), None)
     if result is None:
-        return "", None, model_id
+        return Parsed("", None, model_id)
     final = result.get("text") or ""
-    if result.get("error") or result.get("exit_code"):
-        return final, None, model_id
+    raw = {key: result[key] for key in ("tokens", "duration_ms") if key in result}
+    if result.get("error"):
+        return Parsed(final, None, model_id, raw)
+    # shortcut: Hermes marks the turn cap only by exit_code 1 with no error;
+    # if another error-less non-zero exit appears, match it here.
+    cap = f"turn cap ({MAX_TURNS}) reached" if result.get("exit_code") else None
     # Hermes' input already excludes the cached prompt (cache_read is separate).
     if usage_file is not None and usage_file.exists():
         report = json.loads(usage_file.read_text())
@@ -59,12 +65,14 @@ def parse_hermes(
         counts = [tokens.get(key) for key in ("input", "output", "cache_read")]
         counts.append(tokens.get("cache_write"))
     if counts[0] is None:
-        return final, None, model_id
-    return final, AttemptUsage(*counts), model_id
+        return Parsed(final, None, model_id, raw)
+    return Parsed(final, AttemptUsage(*counts), model_id, raw, cap)
 
 
 class HermesDriver:
     """Runs Hermes with only the bench MCP toolset against an Ollama provider."""
+
+    max_turns = MAX_TURNS
 
     def __init__(
         self,
@@ -75,6 +83,24 @@ class HermesDriver:
         self.ollama_url = ollama_url.rstrip("/")
         self.tmp_root = tmp_root
         self.runner = runner
+
+    def warm_up(self, model: str) -> str | None:
+        """Load ``model`` into Ollama with a one-token generate (untimed).
+
+        Returns:
+            None when Ollama answered, else a one-line error for the manifest.
+        """
+        try:
+            response = httpx.post(
+                f"{self.ollama_url}/api/generate",
+                json={"model": model, "prompt": "ok", "stream": False,
+                      "keep_alive": "30m", "options": {"num_predict": 1}},
+                timeout=600,
+            )  # fmt: skip
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            return f"Ollama warm-up of {model} failed: {str(exc)[:200]}"
+        return None
 
     def run(
         self, prompt: str, model: str, mcp_url: str, token: str, timeout_s: int
@@ -101,7 +127,7 @@ class HermesDriver:
                 "--ignore-user-config", "--ignore-rules",
                 "-m", model,
                 "--provider", PROVIDER,
-                "--max-turns", "30",
+                "--max-turns", str(MAX_TURNS),
                 # MCP discovery runs after `mcp-bench` is validated, so only the
                 # server-name alias selects the bench tools; built-ins stay off.
                 "-t", "bench",

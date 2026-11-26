@@ -20,6 +20,11 @@ from mechubbench.clients.hermes import HermesDriver, ollama_models, parse_hermes
 FIXTURES = Path(__file__).parent / "fixtures" / "clients"
 
 
+def triple(parsed):
+    """(final, usage, model_id) of a parser result."""
+    return parsed.final, parsed.usage, parsed.model_id
+
+
 def fixture(name: str) -> str:
     """Return the text of a captured client fixture."""
     return (FIXTURES / name).read_text()
@@ -93,7 +98,7 @@ def test_isolated_catalog_forces_direct_mode(tmp_path):
 
 
 def test_parse_claude_ok():
-    final, usage, model_id = parse_claude(fixture("claude_ok.json"))
+    final, usage, model_id = triple(parse_claude(fixture("claude_ok.json")))
     assert "ok" in final
     assert usage.input_tokens > 0 and usage.output_tokens > 0
     assert isinstance(usage.cache_read_tokens, int)
@@ -111,7 +116,7 @@ def test_parse_codex_sums_turns():
         "item": {"type": "agent_message", "text": "hi"},
     }
     stdout = "\n".join(json.dumps(event) for event in (turn, message, turn))
-    final, usage, _ = parse_codex(stdout)
+    final, usage, _ = triple(parse_codex(stdout))
     assert final == "hi"
     # Codex's input_tokens includes the cached prefix; input is the uncached part.
     assert (usage.input_tokens, usage.output_tokens) == (12, 6)
@@ -120,7 +125,7 @@ def test_parse_codex_sums_turns():
 
 
 def test_parse_codex_fixture():
-    final, usage, _ = parse_codex(fixture("codex_ok.jsonl"))
+    final, usage, _ = triple(parse_codex(fixture("codex_ok.jsonl")))
     assert final == "ok"
     assert usage.input_tokens == 13509 - 11648
     assert usage.cache_read_tokens == 11648
@@ -131,13 +136,14 @@ def test_parse_hermes_ok(tmp_path):
     usage_file = tmp_path / "usage.json"
     report = {"input_tokens": 7, "output_tokens": 2, "cache_read_tokens": 5}
     usage_file.write_text(json.dumps(report))
-    final, usage, model_id = parse_hermes(fixture("hermes_ok.jsonl"), usage_file)
+    parsed = parse_hermes(fixture("hermes_ok.jsonl"), usage_file)
+    final, usage, model_id = triple(parsed)
     assert final == "ok"
     assert (usage.input_tokens, usage.output_tokens) == (7, 2)
     assert usage.cache_read_tokens == 5 and usage.cache_write_tokens is None
     assert model_id == "glm-4.7-flash:latest"
     # Without a usage file the stream's result event supplies the counts.
-    _, stream_usage, _ = parse_hermes(fixture("hermes_ok.jsonl"), None)
+    _, stream_usage, _ = triple(parse_hermes(fixture("hermes_ok.jsonl"), None))
     assert stream_usage.input_tokens > 0
     assert (stream_usage.cache_read_tokens, stream_usage.cache_write_tokens) == (0, 0)
 
@@ -145,7 +151,7 @@ def test_parse_hermes_ok(tmp_path):
 def test_parse_hermes_records_cache_read():
     tokens = {"input": 223, "output": 9, "cache_read": 3901, "cache_write": 0}
     result = {"type": "result", "exit_code": 0, "text": "ok", "tokens": tokens}
-    _, usage, _ = parse_hermes(json.dumps(result), None)
+    _, usage, _ = triple(parse_hermes(json.dumps(result), None))
     assert (usage.input_tokens, usage.cache_read_tokens) == (223, 3901)
     assert usage.cache_write_tokens == 0
 
@@ -311,7 +317,7 @@ def test_codex_empty_usage_is_none():
         event = {"type": "turn.completed"}
         if usage is not None:
             event["usage"] = usage
-        assert parse_codex(json.dumps(event))[1] is None
+        assert parse_codex(json.dumps(event)).usage is None
 
 
 def test_codex_model_id_falls_back_to_requested(tmp_path):
@@ -356,3 +362,106 @@ def live_group_members(group: int) -> list[int]:
         if int(fields[2]) == group and fields[0] != "Z":
             members.append(int(stat.parent.name))
     return members
+
+
+def test_hermes_turn_cap_is_model_failure_not_infra(tmp_path):
+    """Captured live: glm-4.7-flash with --max-turns 1 (exit 1, no error)."""
+    runner = FakeRunner(fixture("hermes_max_turns.jsonl"), returncode=1)
+    driver = HermesDriver("http://ollama:11434", tmp_root=tmp_path, runner=runner)
+    run = driver.run("hi", "glm-4.7-flash:latest", "http://mcp", "t", 60)
+    assert run.infra_error is None
+    assert run.model_failure and "turn cap" in run.model_failure
+    assert run.usage.input_tokens == 3491
+    assert runner.argv[runner.argv.index("--max-turns") + 1] == "30"
+
+
+def test_exit_zero_with_usage_and_empty_final_is_judged(tmp_path):
+    turn = {"type": "turn.completed", "usage": {"input_tokens": 5, "output_tokens": 1}}
+    run = codex_driver(tmp_path, FakeRunner(json.dumps(turn))).run(
+        "hi", "gpt-x", "http://mcp", "t", 60
+    )
+    assert run.final_message == "" and run.usage is not None
+    assert run.infra_error is None and run.model_failure is None
+
+
+def test_nonzero_exit_with_usage_is_still_infra(tmp_path):
+    turn = {"type": "turn.completed", "usage": {"input_tokens": 5, "output_tokens": 1}}
+    run = codex_driver(tmp_path, FakeRunner(json.dumps(turn), returncode=2)).run(
+        "hi", "gpt-x", "http://mcp", "t", 60
+    )
+    assert run.infra_error and run.model_failure is None
+
+
+def test_raw_usage_kept_with_token_safe_keys(tmp_path):
+    claude = ClaudeCodeDriver(
+        tmp_root=tmp_path,
+        runner=FakeRunner(fixture("claude_ok.json")),
+        credentials=fake_claude_auth(tmp_path),
+    ).run("hi", "claude-opus-5-5", "http://mcp", "t", 60)
+    assert claude.raw_usage["total_cost_usd"] > 0
+    assert claude.raw_usage["num_turns"] == 1
+    assert claude.raw_usage["usage"]["input_tok"] == 2
+    turn = {"type": "turn.completed",
+            "usage": {"input_tokens": 9, "reasoning_output_tokens": 4}}  # fmt: skip
+    codex = codex_driver(tmp_path, FakeRunner(json.dumps(turn))).run(
+        "hi", "gpt-x", "http://mcp", "t", 60
+    )
+    assert codex.raw_usage == {"turns": 1, "input_tok": 9, "reasoning_output_tok": 4}
+    hermes_runner = FakeRunner(fixture("hermes_ok.jsonl"))
+    hermes = HermesDriver("http://o:11434", tmp_root=tmp_path, runner=hermes_runner)
+    hermes = hermes.run("hi", "glm", "http://mcp", "t", 60)
+    assert hermes.raw_usage["tok"]["input"] == 13427
+    for raw in (claude.raw_usage, codex.raw_usage, hermes.raw_usage):
+        assert "tokens" not in json.dumps(raw).lower()
+
+
+def test_claude_model_id_matches_requested_and_usage_sums_models():
+    result = json.loads(fixture("claude_ok.json"))
+    main = result["modelUsage"]["claude-opus-5-5"]
+    helper = {"inputTokens": 10, "outputTokens": 3, "cacheReadInputTokens": 0,
+              "cacheCreationInputTokens": 7}  # fmt: skip
+    result["modelUsage"] = {"claude-haiku-5": helper, "claude-opus-5-5": main}
+    parsed = parse_claude(json.dumps(result), "claude-opus-5-5")
+    assert parsed.model_id == "claude-opus-5-5"
+    assert parsed.usage.input_tokens == main["inputTokens"] + 10
+    assert parsed.usage.output_tokens == main["outputTokens"] + 3
+    assert parsed.usage.cache_write_tokens == main["cacheCreationInputTokens"] + 7
+    assert parse_claude(json.dumps(result), "opus").model_id == "claude-opus-5-5"
+    assert parse_claude(json.dumps(result), "sonnet").model_id == "claude-haiku-5"
+
+
+def test_hermes_warm_up(monkeypatch):
+    sent = {}
+
+    def fake_post(url, json, timeout):
+        sent.update(url=url, body=json)
+        if json["model"] == "missing":
+            raise httpx.ConnectError("refused")
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    driver = HermesDriver("http://o:11434/")
+    assert driver.warm_up("glm") is None
+    assert sent["url"] == "http://o:11434/api/generate"
+    assert sent["body"]["options"] == {"num_predict": 1}
+    assert sent["body"]["prompt"] == "ok" and sent["body"]["keep_alive"]
+    assert "warm-up of missing failed" in driver.warm_up("missing")
+
+
+def test_run_in_group_kills_group_on_keyboard_interrupt(monkeypatch):
+    started = {}
+    real_communicate = subprocess.Popen.communicate
+
+    def interrupted(self, *args, **kwargs):
+        if self.pid not in started:
+            started[self.pid] = True
+            time.sleep(0.2)
+            raise KeyboardInterrupt
+        return real_communicate(self, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        run_in_group(["sh", "-c", "sleep 60 & sleep 60"], capture_output=True)
+    [group] = started
+    time.sleep(0.2)
+    assert live_group_members(group) == []

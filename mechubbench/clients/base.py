@@ -40,6 +40,19 @@ class ClientRun:
     model_id: str | None  # exact id the client reports
     infra_error: str | None  # set when the run failed for non-model reasons
     timed_out: bool
+    raw_usage: dict | None = None  # client's own usage fields, token-safe keys
+    model_failure: str | None = None  # model-side stop (turn cap): a fail
+
+
+@dataclass
+class Parsed:
+    """What a client parser read from one run's stdout."""
+
+    final: str
+    usage: AttemptUsage | None
+    model_id: str | None
+    raw_usage: dict | None = None
+    model_failure: str | None = None
 
 
 class Driver(Protocol):
@@ -62,7 +75,23 @@ def load_clients(path: Path) -> dict[str, dict]:
     return yaml.safe_load(path.read_text())
 
 
-Parser = Callable[[str], tuple[str, AttemptUsage | None, str | None]]
+Parser = Callable[[str], Parsed]
+
+
+def token_safe(value):
+    """Rename ``*tokens*`` keys so the manifest's secret redactor keeps counts.
+
+    The shared redactor treats any key naming a token as a secret and blanks
+    it; ``input_tokens`` becomes ``input_tok``, ``inputTokens`` ``inputTok``.
+    """
+    if isinstance(value, dict):
+        return {
+            key.replace("tokens", "tok").replace("Tokens", "Tok"): token_safe(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [token_safe(item) for item in value]
+    return value
 
 
 def client_env(home: Path, token: str, **extra: str) -> dict[str, str]:
@@ -94,7 +123,9 @@ def run_in_group(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
     """``subprocess.run`` in a new session; on timeout kill the whole group.
 
     SIGTERM first, SIGKILL after 5 s, so grandchildren (MCP helpers, node
-    workers) do not outlive the attempt. Re-raises ``TimeoutExpired``.
+    workers) do not outlive the attempt. Re-raises ``TimeoutExpired``; any
+    other exception while waiting (KeyboardInterrupt, the SystemExit the
+    matrix's SIGTERM handler raises) also kills the group, then re-raises.
     """
     timeout = kwargs.pop("timeout", None)
     stdin = kwargs.pop("stdin", None)
@@ -111,6 +142,9 @@ def run_in_group(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
                 exc.stdout, exc.stderr = process.communicate(timeout=10)
             except subprocess.TimeoutExpired:
                 pass  # a setsid'd grandchild still holds the pipes; stop reading
+            raise
+        except BaseException:
+            _kill_group(process)
             raise
         return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
 
@@ -193,30 +227,38 @@ def execute(
             timeout=timeout_s,
         )
     except subprocess.TimeoutExpired as exc:
-        final, usage, model_id = parse(_text(exc.stdout))
+        parsed = parse(_text(exc.stdout))
         return ClientRun(
             exit_code=-1,
-            final_message=final,
+            final_message=parsed.final,
             wall_seconds=time.monotonic() - started,
-            usage=usage,
-            model_id=model_id,
+            usage=parsed.usage,
+            model_id=parsed.model_id,
             infra_error=None,
             timed_out=True,
+            raw_usage=token_safe(parsed.raw_usage),
         )
     wall_seconds = time.monotonic() - started
     stdout, stderr = _text(completed.stdout), _text(completed.stderr)
-    final, usage, model_id = parse(stdout)
+    parsed = parse(stdout)
+    # No usage = the model never ran (provider, auth, startup, transport).
+    # With usage, only a parser-recognised model stop excuses a non-zero
+    # exit; an empty final message is judged (and fails), not infra.
     infra_error = None
-    if completed.returncode != 0 or not final or usage is None:
+    if parsed.usage is None or (
+        completed.returncode != 0 and parsed.model_failure is None
+    ):
         infra_error = redact_text(_first_line(stderr, stdout))
     return ClientRun(
         exit_code=completed.returncode,
-        final_message=final,
+        final_message=parsed.final,
         wall_seconds=wall_seconds,
-        usage=usage,
-        model_id=model_id,
+        usage=parsed.usage,
+        model_id=parsed.model_id,
         infra_error=infra_error,
         timed_out=False,
+        raw_usage=token_safe(parsed.raw_usage),
+        model_failure=None if infra_error else parsed.model_failure,
     )
 
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from mechubbench.clients.base import (
     AttemptUsage,
     ClientRun,
+    Parsed,
     client_env,
     copy_login,
     execute,
@@ -74,14 +75,16 @@ def isolated_catalog(models_cache: Path) -> dict:
     return {"models": models}
 
 
-def parse_codex(stdout: str) -> tuple[str, AttemptUsage | None, str | None]:
-    """Parse `codex exec --json` events into (final, usage, model_id).
+def parse_codex(stdout: str) -> Parsed:
+    """Parse `codex exec --json` events.
 
-    Usage is summed over ``turn.completed`` events; Codex reports no model id
-    (the driver records the requested one).
+    Usage is summed over ``turn.completed`` events (the raw sums keep every
+    numeric field, e.g. reasoning tokens); Codex reports no model id (the
+    driver records the requested one).
     """
     final = ""
     totals: dict[str, int] | None = None
+    raw: dict[str, int] = {}
     for event in json_lines(stdout):
         item = event.get("item") or {}
         if (
@@ -94,6 +97,10 @@ def parse_codex(stdout: str) -> tuple[str, AttemptUsage | None, str | None]:
         usage = event.get("usage")
         if not usage:
             continue  # an empty usage block is "not reported", not zero
+        raw["turns"] = raw.get("turns", 0) + 1
+        for key, count in usage.items():
+            if isinstance(count, int):
+                raw[key] = raw.get(key, 0) + count
         totals = totals or {"input": 0, "cached": 0, "output": 0, "write": None}
         cached = usage.get("cached_input_tokens", 0)
         # Codex's input_tokens includes the cached prefix; keep only the uncached.
@@ -104,17 +111,14 @@ def parse_codex(stdout: str) -> tuple[str, AttemptUsage | None, str | None]:
             written = usage["cache_write_input_tokens"]
             totals["write"] = (totals["write"] or 0) + written
     if totals is None:
-        return final, None, None
-    return (
-        final,
-        AttemptUsage(
-            input_tokens=totals["input"],
-            output_tokens=totals["output"],
-            cache_read_tokens=totals["cached"],
-            cache_write_tokens=totals["write"],
-        ),
-        None,
+        return Parsed(final, None, None)
+    usage = AttemptUsage(
+        input_tokens=totals["input"],
+        output_tokens=totals["output"],
+        cache_read_tokens=totals["cached"],
+        cache_write_tokens=totals["write"],
     )
+    return Parsed(final, usage, None, raw)
 
 
 class CodexDriver:
