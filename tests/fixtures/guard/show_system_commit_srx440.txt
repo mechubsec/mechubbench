@@ -1,0 +1,97 @@
+<output xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" xmlns:junos="http://xml.juniper.net/junos/25.4X300-D40.2-EVO/junos" xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0">
+0   2026-11-25 23:24:48 UTC by netconf via cli
+1   2026-11-25 23:23:12 UTC by netconf via cli commit confirmed, rollback in 10mins
+2   2026-11-25 23:16:07 UTC by netconf via netconf
+    Confirming commit: no-change-ref by claude-fullscope (unknown) on-behalf-of=self via unknown-public request.id=a9c57b08-1f82-4c5d-87a1-76df81d39f4f
+3   2026-11-25 23:15:56 UTC by netconf via netconf commit confirmed, rollback in 10mins
+    no-change-ref by claude-fullscope (unknown) on-behalf-of=self via unknown-public request.id=2069b7c1-e1cb-484b-92fe-15edf45802b6 change-set=56bbb1a2429b5b6a
+4   2026-11-25 00:27:37 UTC by netconf via cli
+    confirm-cs-980bdc4d-mgmt-instance
+5   2026-11-25 00:27:10 UTC by netconf via netconf commit confirmed, rollback in 10mins
+    no-change-ref by claude-fullscope (unknown) on-behalf-of=self via unknown-public request.id=6bc65a37-350c-4997-919b-e38e7937a426 change-set=6026fc296c5b1ddc
+6   2026-11-25 00:20:18 UTC by root via cli
+7   2026-11-25 00:12:21 UTC by root via other
+8   2026-11-25 00:01:21 UTC by netconf via netconf commit confirmed, rollback in 10mins
+    no-change-ref by claude-fullscope (unknown) on-behalf-of=self via unknown-public request.id=737cf5d8-52bb-4e85-936e-1296a2bcdc6d change-set=980bdc4d7c3dc2aa
+9   2026-11-24 20:05:15 UTC by root via cli
+10  2026-11-24 19:49:51 UTC by root via cli
+11  2026-11-24 16:38:02 UTC by root via netconf
+    outpost: change rules
+12  2026-11-24 16:37:55 UTC by root via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+13  2026-11-24 16:35:53 UTC by root via netconf
+    outpost: change ports
+14  2026-11-24 16:35:45 UTC by root via netconf commit confirmed, rollback in 7mins
+    outpost: change ports
+15  2026-11-24 00:15:04 UTC by root via netconf
+    outpost: rename firewall to srx440
+16  2026-11-24 00:14:56 UTC by root via netconf commit confirmed, rollback in 7mins
+    outpost: rename firewall to srx440
+17  2026-11-23 15:07:54 UTC by root via netconf
+    outpost: change rules
+18  2026-11-23 15:07:41 UTC by root via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+19  2026-11-23 04:21:41 UTC by outpost via cli
+    outpost: lab cleanup
+20  2026-11-23 04:21:36 UTC by outpost via cli commit confirmed, rollback in 3mins
+    outpost: lab cleanup
+21  2026-11-23 04:20:37 UTC by outpost via netconf
+    outpost: assistant
+22  2026-11-23 04:20:31 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: assistant
+23  2026-11-23 03:14:57 UTC by outpost via cli
+    outpost: lab cleanup
+24  2026-11-23 03:14:52 UTC by outpost via cli commit confirmed, rollback in 3mins
+    outpost: lab cleanup
+25  2026-11-23 03:10:46 UTC by outpost via netconf
+    outpost: assistant
+26  2026-11-23 03:10:40 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: assistant
+27  2026-11-23 01:30:08 UTC by outpost via netconf
+    outpost: change rules
+28  2026-11-23 01:30:00 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+29  2026-11-23 01:28:41 UTC by outpost via netconf
+    outpost: change rules
+30  2026-11-23 01:28:32 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+31  2026-11-23 01:27:16 UTC by outpost via netconf
+    outpost: change rules
+32  2026-11-23 01:27:09 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+33  2026-11-23 01:26:58 UTC by outpost via netconf
+    outpost: change rules
+34  2026-11-23 01:26:48 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+35  2026-11-23 01:25:17 UTC by outpost via netconf
+    outpost: change rules
+36  2026-11-23 01:25:10 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+37  2026-11-23 01:22:46 UTC by outpost via netconf
+    outpost: change rules
+38  2026-11-23 01:22:39 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+39  2026-11-23 01:16:37 UTC by outpost via netconf
+    outpost: change rules
+40  2026-11-23 01:16:30 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+41  2026-11-23 01:15:11 UTC by outpost via netconf
+    outpost: change rules
+42  2026-11-23 01:15:01 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+43  2026-11-23 01:13:41 UTC by outpost via netconf
+    outpost: change rules
+44  2026-11-23 01:13:34 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+45  2026-11-23 01:13:21 UTC by outpost via netconf
+    outpost: change rules
+46  2026-11-23 01:13:13 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+47  2026-11-23 01:11:37 UTC by outpost via netconf
+    outpost: change rules
+48  2026-11-23 01:11:30 UTC by outpost via netconf commit confirmed, rollback in 7mins
+    outpost: change rules
+49  2026-11-23 01:09:07 UTC by outpost via netconf
+    outpost: change rules
+rescue  2026-11-13 04:02:24 UTC by outpost via netconf
+</output>

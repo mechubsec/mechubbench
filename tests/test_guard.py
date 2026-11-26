@@ -1,6 +1,7 @@
 """Tests for the bench guard: drift check, baseline capture and restore."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +16,8 @@ from mechubbench.guard import (
 )
 from mechubbench.inventory import BenchDevice
 from mechubbench.runner import MCPError
+
+FIXTURES = Path(__file__).parent / "fixtures" / "guard"
 
 
 def _device_of(arguments):
@@ -57,6 +60,7 @@ class FakeMCP:
     def __init__(self, devices, change_sets=None):
         self.devices = devices
         self.change_sets = change_sets or []  # dicts as list_junos_change_sets
+        self.can_confirm = True
         self.calls = []
 
     def names(self, tool):
@@ -97,6 +101,8 @@ class FakeMCP:
             )
             return {"state": record["state"], **record.get("status", {})}
         if tool_name == "confirm_junos_change_set":
+            if not self.can_confirm:
+                raise MCPError("Tool execution failed: operation not found")
             record = next(
                 cs
                 for cs in self.change_sets
@@ -155,9 +161,8 @@ def test_restore_with_pending_confirmed():
     assert device.config == "base"
 
 
-def test_restore_confirms_awaiting_change_set_first():
-    """R1: a change-set op awaiting confirmation is confirmed, then rolled back."""
-    change_sets = [
+def _awaiting_change_sets():
+    return [
         {
             "id": "cs1",
             "device": "bench-srx345",
@@ -176,17 +181,34 @@ def test_restore_confirms_awaiting_change_set_first():
             "status": {"commit_confirmation": "committed"},
         },
     ]
-    device, mcp, baseline = _setup(change_sets=change_sets)
+
+
+def test_restore_confirms_awaiting_change_set_with_agent_client():
+    """R14: the operator lists the op; only the agent (opener) confirms it."""
+    device, mcp, baseline = _setup(change_sets=_awaiting_change_sets())
+    mcp.can_confirm = False  # rust-junosmcp: only the opener may confirm
+    agent = FakeMCP(mcp.devices, mcp.change_sets)
     device.confirmed_commit("changed")
-    restore(mcp, baseline)
-    names = [name for name, _ in mcp.calls]
-    assert names.index("confirm_junos_change_set") < names.index("rollback_config")
-    confirms = [args for name, args in mcp.calls if name == "confirm_junos_change_set"]
-    assert confirms == [{"router_name": "bench-srx345", "operation_id": "op1"}]
-    # The confirming commit is a second entry above the baseline.
+    restore(mcp, baseline, agent_mcp=agent)
+    assert agent.calls == [
+        (
+            "confirm_junos_change_set",
+            {"router_name": "bench-srx345", "operation_id": "op1"},
+        )
+    ]
+    assert "list_junos_change_sets" in mcp.names("list_junos_change_sets")
+    # The confirming commit is a second entry above the baseline (R15).
     rollbacks = [args for name, args in mcp.calls if name == "rollback_config"]
     assert [args["version"] for args in rollbacks] == [2]
     assert device.config == "base"
+
+
+def test_restore_pending_op_without_agent_client_raises():
+    device, mcp, baseline = _setup(change_sets=_awaiting_change_sets())
+    device.confirmed_commit("changed")
+    with pytest.raises(RuntimeError, match="agent"):
+        restore(mcp, baseline)
+    assert mcp.names("rollback_config") == []
 
 
 def test_restore_two_commits():
@@ -274,3 +296,24 @@ def test_record_golden_writes_fingerprints(tmp_path):
     path = tmp_path / "golden.json"
     record_golden(mcp, _inventory("bench-ex2300", "bench-csrx"), path)
     assert json.loads(path.read_text()) == {"bench-csrx": "g2", "bench-ex2300": "g1"}
+
+
+def test_real_commit_history_fixture_parses():
+    """Real srx440 output: XML wrapper and indented comment lines ignored."""
+    output = (FIXTURES / "show_system_commit_srx440.txt").read_text()
+
+    class RealOutput:
+        def call_tool(self, tool_name, arguments, truncate=True):
+            if tool_name == "execute_junos_command":
+                return output
+            return {"candidate_fingerprint": "fp"}
+
+    baseline = capture_baseline(RealOutput(), "bench-srx440")
+    assert baseline.top_commit == "2026-11-25 23:24:48 UTC by netconf via cli"
+    older = Baseline(
+        "bench-srx440", "fp", "2026-11-25 23:16:07 UTC by netconf via netconf"
+    )
+    newer = commits_since(RealOutput(), older)
+    assert newer[0] == baseline.top_commit
+    assert "commit confirmed" in newer[1]
+    assert len(newer) == 2

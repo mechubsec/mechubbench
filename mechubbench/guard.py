@@ -19,7 +19,9 @@ from mechubbench.runner import (
 )
 
 # `0   2026-11-25 23:28:11 UTC by netconf via netconf commit confirmed, ...`
-_COMMIT_LINE = re.compile(r"^\s*\d+\s+(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d .*?)\s*$")
+# The XML wrapper and indented comment lines ("    Confirming commit: ...")
+# never match.
+_COMMIT_LINE = re.compile(r"^\d+\s+(\d{4}-\d{2}-\d{2} \d\d:\d\d:\d\d .*?)\s*$")
 _MAX_ROLLBACK = 49  # Junos keeps rollback 0..49
 
 
@@ -143,10 +145,12 @@ def commits_since(mcp, baseline: Baseline) -> list[str]:
     return entries[: entries.index(baseline.top_commit)]
 
 
-def _confirm_awaiting_operations(mcp, device: str) -> None:
+def _confirm_awaiting_operations(mcp, agent_mcp, device: str) -> None:
     """Confirm change-set operations left awaiting confirmation on `device`.
 
     An op left AwaitingConfirmation blocks every later apply on the device.
+    The operator lists and reads status (no owner check there), but only the
+    opener may confirm, so the confirm goes through `agent_mcp`.
     """
     change_sets = mcp.call_tool(
         "list_junos_change_sets", {"router_name": device}, truncate=False
@@ -161,7 +165,12 @@ def _confirm_awaiting_operations(mcp, device: str) -> None:
         )
         if status.get("commit_confirmation") != "awaiting_confirmation":
             continue
-        mcp.call_tool(
+        if agent_mcp is None:
+            raise RuntimeError(
+                f"change set {change_set['id']} awaits confirmation on {device} "
+                "and no agent client was given to confirm it"
+            )
+        agent_mcp.call_tool(
             "confirm_junos_change_set",
             {
                 "router_name": device,
@@ -197,10 +206,11 @@ def _rollback_to_baseline(mcp, baseline: Baseline) -> None:
         raise RuntimeError(f"candidate not clean after rollback on {device}")
 
 
-def restore(mcp, baseline: Baseline) -> None:
+def restore(mcp, baseline: Baseline, agent_mcp=None) -> None:
     """Return a device to its baseline, whatever the attempt did.
 
-    Confirms change-set ops awaiting confirmation, rolls back every commit
+    Confirms change-set ops awaiting confirmation (with `agent_mcp`, the
+    opener; required when one is pending), then rolls back every commit
     since the baseline in one plain commit, checks the candidate is clean,
     then checks the fingerprint. With no commits since the baseline only the
     fingerprint is checked. Safe to call after an attempt that raised midway.
@@ -209,7 +219,7 @@ def restore(mcp, baseline: Baseline) -> None:
         RuntimeError: On any failure; the device must not be reused.
     """
     try:
-        _confirm_awaiting_operations(mcp, baseline.device)
+        _confirm_awaiting_operations(mcp, agent_mcp, baseline.device)
         _rollback_to_baseline(mcp, baseline)
     except MCPError as exc:
         raise RuntimeError(f"restore of {baseline.device} failed: {exc}") from None
