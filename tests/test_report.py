@@ -62,8 +62,11 @@ def test_compare_mismatched_runs():
     run = _run(_cell(model="new"))
     base = _run(_cell(model="old"), _cell(model="new", test="gone"))
     html = render_report(run, base)
-    assert "—" in html
-    assert "codex · old" in html
+    svgs = [chunk.split("</svg>")[0] for chunk in html.split("<svg")[1:]]
+    t1_svg = next(x for x in svgs if "codex · old" in x and "codex · new" in x)
+    assert "run —" in t1_svg  # old: cell only in baseline
+    assert "base —" in t1_svg  # new: cell only in run
+    assert "codex · new" in t1_svg  # run-only model label survives
 
 
 def test_no_external_urls():
