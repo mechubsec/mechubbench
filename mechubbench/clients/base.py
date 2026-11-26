@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import stat
 import subprocess
 import tempfile
 import time
@@ -106,7 +107,10 @@ def run_in_group(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
             stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired as exc:
             _kill_group(process)
-            exc.stdout, exc.stderr = process.communicate()
+            try:
+                exc.stdout, exc.stderr = process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass  # a setsid'd grandchild still holds the pipes; stop reading
             raise
         return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
 
@@ -124,24 +128,48 @@ def _kill_group(process: subprocess.Popen) -> None:
                 pass
 
 
-def write_back(copy: Path, original: Path) -> None:
+def copy_login(original: Path, copy: Path) -> bytes:
+    """Copy a client login file to ``copy`` (0600); return the bytes copied."""
+    snapshot = original.read_bytes()
+    copy.write_bytes(snapshot)
+    copy.chmod(0o600)
+    return snapshot
+
+
+def write_back(copy: Path, original: Path, snapshot: bytes) -> None:
     """Atomically replace ``original`` with ``copy`` if the client rewrote it.
 
     Clients rotate OAuth refresh tokens inside the throwaway home; without
-    this the user's real login would hold a revoked token. Contents are never
+    this the user's real login would hold a revoked token. Comparing against
+    the ``snapshot`` taken at copy time (not the current original) keeps a
+    login the user's own session refreshed meanwhile. Contents are never
     logged.
     """
-    if not copy.exists() or copy.read_bytes() == original.read_bytes():
+    if not copy.exists() or copy.read_bytes() == snapshot:
         return
+    mode = stat.S_IMODE(original.stat().st_mode)
     handle, staging = tempfile.mkstemp(dir=original.parent, prefix=".bench-")
     try:
         with os.fdopen(handle, "wb") as staged:
             staged.write(copy.read_bytes())
-        os.chmod(staging, 0o600)
+        os.chmod(staging, mode)
         os.replace(staging, original)
     except BaseException:
         Path(staging).unlink(missing_ok=True)
         raise
+
+
+def setup_error(message: str) -> ClientRun:
+    """A run that never started because its isolated home could not be built."""
+    return ClientRun(
+        exit_code=-1,
+        final_message="",
+        wall_seconds=0.0,
+        usage=None,
+        model_id=None,
+        infra_error=redact_text(message),
+        timed_out=False,
+    )
 
 
 def execute(

@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from mechubbench.clients import claude_code
 from mechubbench.clients.base import run_in_group, write_back
 from mechubbench.clients.claude_code import ClaudeCodeDriver, parse_claude
 from mechubbench.clients.codex import CodexDriver, isolated_catalog, parse_codex
@@ -233,12 +234,12 @@ def test_codex_refuses_model_missing_from_catalog(tmp_path):
 def test_write_back_replaces_changed_login(tmp_path):
     original = tmp_path / "auth.json"
     original.write_text("old")
-    original.chmod(0o600)
+    original.chmod(0o640)
     copy = tmp_path / "copy.json"
     copy.write_text("rotated")
-    write_back(copy, original)
+    write_back(copy, original, b"old")
     assert original.read_text() == "rotated"
-    assert original.stat().st_mode & 0o777 == 0o600
+    assert original.stat().st_mode & 0o777 == 0o640  # mode preserved
     assert sorted(path.name for path in tmp_path.iterdir()) == [
         "auth.json",
         "copy.json",
@@ -251,8 +252,72 @@ def test_write_back_leaves_unchanged_login(tmp_path):
     os.utime(original, (1_000_000, 1_000_000))
     copy = tmp_path / "copy.json"
     copy.write_text("same")
-    write_back(copy, original)
+    write_back(copy, original, b"same")
     assert original.stat().st_mtime == 1_000_000
+
+
+def test_write_back_keeps_login_refreshed_elsewhere(tmp_path):
+    original = tmp_path / "auth.json"
+    original.write_text("fresh from the user's own session")
+    copy = tmp_path / "copy.json"
+    copy.write_text("snapshot")  # client did not touch its copy
+    write_back(copy, original, b"snapshot")
+    assert original.read_text() == "fresh from the user's own session"
+
+
+def test_failed_write_back_still_removes_temp_home(tmp_path, monkeypatch):
+    def broken_write_back(*args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(claude_code, "write_back", broken_write_back)
+    homes = tmp_path / "homes"
+    homes.mkdir()
+    driver = ClaudeCodeDriver(
+        tmp_root=homes,
+        runner=FakeRunner(fixture("claude_ok.json")),
+        credentials=fake_claude_auth(tmp_path),
+    )
+    with pytest.raises(OSError):
+        driver.run("hi", "claude-x", "http://mcp", "t", 60)
+    assert list(homes.iterdir()) == []
+
+
+def test_missing_login_or_cache_is_infra_error(tmp_path):
+    missing = tmp_path / "nope.json"
+    runs = [
+        ClaudeCodeDriver(tmp_root=tmp_path, runner=FakeRunner(), credentials=missing),
+        CodexDriver(
+            tmp_root=tmp_path,
+            runner=FakeRunner(),
+            auth=missing,
+            models_cache=fake_models_cache(tmp_path),
+        ),
+        CodexDriver(
+            tmp_root=tmp_path,
+            runner=FakeRunner(),
+            auth=fake_claude_auth(tmp_path),
+            models_cache=missing,
+        ),
+    ]
+    for driver in runs:
+        run = driver.run("hi", "gpt-x", "http://mcp", "t", 60)
+        assert run.infra_error and run.usage is None
+        assert driver.runner.argv == []
+    assert [path.name for path in tmp_path.iterdir() if path.is_dir()] == []
+
+
+def test_codex_empty_usage_is_none():
+    for usage in ({}, None):
+        event = {"type": "turn.completed"}
+        if usage is not None:
+            event["usage"] = usage
+        assert parse_codex(json.dumps(event))[1] is None
+
+
+def test_codex_model_id_falls_back_to_requested(tmp_path):
+    runner = FakeRunner(fixture("codex_ok.jsonl"))
+    run = codex_driver(tmp_path, runner).run("hi", "gpt-x", "http://mcp", "t", 60)
+    assert run.model_id == "gpt-x"
 
 
 def test_driver_writes_back_rotated_claude_login(tmp_path):

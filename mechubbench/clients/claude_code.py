@@ -12,9 +12,11 @@ from mechubbench.clients.base import (
     AttemptUsage,
     ClientRun,
     client_env,
+    copy_login,
     execute,
     isolated_home,
     run_in_group,
+    setup_error,
     write_back,
 )
 
@@ -68,11 +70,14 @@ class ClaudeCodeDriver:
     ) -> ClientRun:
         """Run one prompt in a throwaway HOME and return the outcome."""
         home = isolated_home(self.tmp_root)
+        login = home / ".claude" / ".credentials.json"
+        snapshot = None
         try:
-            auth_dir = home / ".claude"
-            auth_dir.mkdir(mode=0o700)
-            shutil.copyfile(self.credentials, auth_dir / ".credentials.json")
-            (auth_dir / ".credentials.json").chmod(0o600)
+            login.parent.mkdir(mode=0o700)
+            try:
+                snapshot = copy_login(self.credentials, login)
+            except OSError as exc:
+                return setup_error(f"cannot copy Claude login: {exc}")
             mcp_config = home / "mcp.json"
             # The token stays in the env; Claude expands ${BENCH_TOKEN} itself.
             mcp_config.write_text(
@@ -107,5 +112,8 @@ class ClaudeCodeDriver:
                 parse_claude,
             )
         finally:
-            write_back(home / ".claude" / ".credentials.json", self.credentials)
-            shutil.rmtree(home, ignore_errors=True)
+            try:
+                if snapshot is not None:
+                    write_back(login, self.credentials, snapshot)
+            finally:
+                shutil.rmtree(home, ignore_errors=True)

@@ -12,10 +12,12 @@ from mechubbench.clients.base import (
     AttemptUsage,
     ClientRun,
     client_env,
+    copy_login,
     execute,
     isolated_home,
     json_lines,
     run_in_group,
+    setup_error,
     write_back,
 )
 
@@ -75,7 +77,8 @@ def isolated_catalog(models_cache: Path) -> dict:
 def parse_codex(stdout: str) -> tuple[str, AttemptUsage | None, str | None]:
     """Parse `codex exec --json` events into (final, usage, model_id).
 
-    Usage is summed over ``turn.completed`` events; Codex reports no model id.
+    Usage is summed over ``turn.completed`` events; Codex reports no model id
+    (the driver records the requested one).
     """
     final = ""
     totals: dict[str, int] | None = None
@@ -88,7 +91,9 @@ def parse_codex(stdout: str) -> tuple[str, AttemptUsage | None, str | None]:
             final = item.get("text") or ""
         if event.get("type") != "turn.completed":
             continue
-        usage = event.get("usage") or {}
+        usage = event.get("usage")
+        if not usage:
+            continue  # an empty usage block is "not reported", not zero
         totals = totals or {"input": 0, "cached": 0, "output": 0, "write": None}
         cached = usage.get("cached_input_tokens", 0)
         # Codex's input_tokens includes the cached prefix; keep only the uncached.
@@ -132,22 +137,18 @@ class CodexDriver:
     ) -> ClientRun:
         """Run one prompt in a throwaway CODEX_HOME and return the outcome."""
         home = isolated_home(self.tmp_root)
+        login = home / "auth.json"
+        snapshot = None
         try:
-            shutil.copyfile(self.auth, home / "auth.json")
-            (home / "auth.json").chmod(0o600)
-            models = isolated_catalog(self.models_cache)
+            try:
+                snapshot = copy_login(self.auth, login)
+                models = isolated_catalog(self.models_cache)
+            except (OSError, ValueError, KeyError) as exc:
+                return setup_error(f"cannot prepare Codex home: {exc!r}")
             if model not in {entry.get("slug") for entry in models["models"]}:
                 # Unknown models get Codex's fallback metadata, whose tool
                 # surface these overrides were never checked against.
-                return ClientRun(
-                    exit_code=-1,
-                    final_message="",
-                    wall_seconds=0.0,
-                    usage=None,
-                    model_id=None,
-                    infra_error=f"model {model!r} is not in the Codex model cache",
-                    timed_out=False,
-                )
+                return setup_error(f"model {model!r} is not in the Codex model cache")
             catalog = home / "model_catalog.json"
             catalog.write_text(json.dumps(models))
             argv = [
@@ -162,7 +163,7 @@ class CodexDriver:
             for feature in DISABLED_FEATURES:
                 argv += ["--disable", feature]
             argv += ["--", prompt]
-            return execute(
+            run = execute(
                 argv,
                 client_env(home, token, CODEX_HOME=str(home)),
                 home,
@@ -170,6 +171,12 @@ class CodexDriver:
                 self.runner,
                 parse_codex,
             )
+            # Codex's JSON stream names no model; record the one requested.
+            run.model_id = run.model_id or model
+            return run
         finally:
-            write_back(home / "auth.json", self.auth)
-            shutil.rmtree(home, ignore_errors=True)
+            try:
+                if snapshot is not None:
+                    write_back(login, self.auth, snapshot)
+            finally:
+                shutil.rmtree(home, ignore_errors=True)
