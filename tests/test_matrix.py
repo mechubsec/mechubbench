@@ -325,3 +325,41 @@ def test_cli_matrix_wires_tokens_version_and_hermes(tmp_path, monkeypatch):
 
     (tmp_path / "run.json").write_text("{}")
     assert args.func(args) == 1  # existing manifest needs --resume
+
+
+def test_cli_matrix_record_golden_writes_fingerprints_only(tmp_path, monkeypatch):
+    from mechubbench import cli
+
+    (tmp_path / "operator").write_text("operator-secret\n")
+
+    class FakeOperator:
+        def __init__(self, endpoint, token):
+            assert token == "operator-secret"
+
+        def call_tool(self, name, arguments):
+            assert name == "get_junos_candidate_fingerprint"
+            return {"candidate_fingerprint": f"fp-{arguments['device']}"}
+
+    monkeypatch.setattr(cli.runner, "MCPClient", FakeOperator)
+    monkeypatch.setattr(cli.matrix, "run_matrix", lambda *a, **k: pytest.fail())
+    golden = tmp_path / "golden.json"
+    args = cli.build_parser().parse_args([
+        "matrix", "--record-golden", "--inventory", "bench/devices.yaml",
+        "--mcp-endpoint", "http://bench/mcp",
+        "--setup-token-file", str(tmp_path / "operator"),
+        "--golden", str(golden),
+    ])  # fmt: skip
+    assert args.func(args) == 0
+    recorded = json.loads(golden.read_text())
+    assert recorded["bench-srx440"] == "fp-bench-srx440"
+    assert len(recorded) == 6
+    assert "operator-secret" not in golden.read_text()
+
+
+def test_cli_matrix_needs_scenarios_and_out(tmp_path):
+    from mechubbench import cli
+
+    args = cli.build_parser().parse_args(
+        ["matrix", "--mcp-endpoint", "http://bench/mcp"]
+    )
+    assert args.func(args) == 1

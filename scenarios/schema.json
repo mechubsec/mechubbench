@@ -3,6 +3,14 @@
   "title": "Benchmark Scenario",
   "description": "Schema for network-automation agent benchmark scenarios",
   "type": "object",
+  "definitions": {
+    "keyword": {
+      "oneOf": [
+        {"type": "string"},
+        {"type": "array", "items": {"type": "string"}, "minItems": 1}
+      ]
+    }
+  },
   "required": ["id", "vendor", "setup", "prompt", "expected_calls", "forbidden_calls", "scoring"],
   "properties": {
     "id": {
@@ -103,10 +111,13 @@
         },
         "report_contains": {
           "type": "array",
-          "description": "Keywords that must appear in final_message (discover scenarios)",
-          "items": {
-            "type": "string"
-          }
+          "description": "Keywords that must appear in final_message (discover scenarios); a nested list is any-of",
+          "items": {"$ref": "#/definitions/keyword"}
+        },
+        "report_contains_by_device": {
+          "type": "object",
+          "description": "Device name -> report_contains list that replaces report_contains for that device",
+          "additionalProperties": {"type": "array", "items": {"$ref": "#/definitions/keyword"}}
         }
       }
     },
@@ -141,6 +152,8 @@
         "required": ["command"],
         "properties": {
           "command": {"type": "string"},
+          "devices": {"type": "array", "items": {"type": "string"},
+                      "description": "Run this check only for these target devices"},
           "must_contain": {"type": "array", "items": {"type": "string"}},
           "must_match": {"type": "string"},
           "must_not_contain": {"type": "array", "items": {"type": "string"}}

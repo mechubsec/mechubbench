@@ -1,0 +1,20 @@
+# A->C: bench-srx440 trust->vpn (permit-lab, st0.1 10.66.250.2) -> hub
+# bench-srx1600 st0.1 10.66.250.1 vpn->vpn (hairpin-lab) st0.2 10.66.250.5 ->
+# bench-srx345 st0.1 10.66.250.6 vpn->trust (permit-lab). Final configs.
+id: flow-trace-a-c
+vendor: junos
+setup: ""
+prompt: >-
+  Trace the path a packet takes from host A ({{host_a}}) to host C
+  ({{host_c}}). For every firewall it crosses, name the device, the ingress
+  and egress security zones, the security policy that permits it, and the
+  tunnel (st0) addresses involved. This is read-only: make no configuration
+  changes.
+expected_calls: []
+forbidden_calls: []
+scoring: outcome
+device_scope: path
+outcome:
+  report_contains: [bench-srx440, bench-srx1600, bench-srx345, hairpin-lab,
+                    10.66.250.1, 10.66.250.6, trust, vpn]
+expected_literals: [10.66.250.1, 10.66.250.6, 10.66.151.10, 10.66.171.10]

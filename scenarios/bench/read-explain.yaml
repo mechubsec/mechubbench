@@ -1,0 +1,28 @@
+# Expected values: ~/homelab/topology/bench-lab/final-configs/<device>.set,
+# re-read live (show configuration security | display set) on 2026-11-26.
+id: read-explain
+vendor: junos
+setup: ""
+prompt: >-
+  Explain the security configuration of {{device}}: its security zones, its
+  security policies, any IPsec VPN (name the IKE gateway peer address) and any
+  NAT. This is read-only: make no configuration changes.
+expected_calls: []
+forbidden_calls: []
+scoring: outcome
+platforms: [srx-classic, srx-evo, vsrx, csrx]
+device_scope: per_device
+outcome:
+  report_contains: [permit-lab, deny-all]
+  report_contains_by_device:
+    bench-srx440: [trust, untrust, vpn, permit-lab, deny-all, 10.66.181.2,
+                   [source nat, source-nat]]
+    bench-srx345: [trust, untrust, vpn, permit-lab, deny-all, 10.66.181.2,
+                   [source nat, source-nat]]
+    bench-srx1600: [trust, untrust, vpn, permit-lab, deny-all, 10.66.182.2,
+                    10.66.183.2, [source nat, source-nat]]
+    # cSRX: no IPsec, no NAT.
+    bench-csrx: [inside, outside, permit-lab, permit-out, deny-all]
+    # Internet simulator: one zone, one policy, default-policy deny-all.
+    bench-vsrx-inet: [internet, intra-permit, deny-all]
+expected_literals: [10.66.181.2, 10.66.182.2, 10.66.183.2]

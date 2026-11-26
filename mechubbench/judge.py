@@ -51,9 +51,12 @@ def judge_attempt(
 ) -> tuple[bool, str]:
     """Judge one attempt by script.
 
-    Checks, in order: report keywords in the final message, device state via
-    `device_checks`, and (when `commit_confirmed_required`) that some commit
-    since the baseline was a `commit confirmed`.
+    Checks, in order: report keywords in the final message (a per-device
+    list in `outcome.report_contains_by_device` replaces `report_contains`;
+    a nested list is any-of), device state via `device_checks` (a check
+    with `devices` runs only for those devices), and (when
+    `commit_confirmed_required`) that some commit since the baseline was a
+    `commit confirmed`.
 
     Args:
         scenario: Scenario dict (outcome.report_contains, device_checks, ...).
@@ -68,14 +71,27 @@ def judge_attempt(
     Raises:
         JudgeInfraError: MCP error while running a device check (infra, not a fail).
     """
-    report_contains = scenario.get("outcome", {}).get("report_contains", [])
-    if report_contains:
-        view = {"scoring": "outcome", "outcome": {"report_contains": report_contains}}
+    outcome = scenario.get("outcome", {})
+    report_contains = outcome.get("report_contains_by_device", {}).get(
+        device, outcome.get("report_contains", [])
+    )
+    # A list item is any-of: one of its keywords must appear.
+    keywords = [kw for kw in report_contains if isinstance(kw, str)]
+    if keywords:
+        view = {"scoring": "outcome", "outcome": {"report_contains": keywords}}
         scored = score_scenario(view, [], final_message=final_message)
         if not scored["pass"]:
             return False, scored["reason"]
+    message = (final_message or "").lower()
+    for options in report_contains:
+        if isinstance(options, list) and not any(
+            kw.lower() in message for kw in options
+        ):
+            return False, f"report missing any of: {options}"
 
     for check in scenario.get("device_checks", []):
+        if "devices" in check and device not in check["devices"]:
+            continue
         failure = _check_device(check, device, mcp)
         if failure:
             return False, failure

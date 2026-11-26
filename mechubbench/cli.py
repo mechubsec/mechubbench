@@ -12,7 +12,7 @@ from pathlib import Path
 
 import jsonschema
 
-from . import core, inventory, matrix, redact, report, runner
+from . import core, guard, inventory, matrix, redact, report, runner
 from .clients.base import load_clients
 from .clients.claude_code import ClaudeCodeDriver
 from .clients.codex import CodexDriver
@@ -457,6 +457,29 @@ def _matrix_entries(config: dict, wanted: list[str]) -> list[tuple]:
     return entries
 
 
+def _record_golden(args: argparse.Namespace) -> int:
+    """Write every bench device's config fingerprint to --golden."""
+    try:
+        operator_token = _read_token(args.setup_token_file, "BENCH_SETUP_TOKEN")
+    except ValueError as e:
+        logger.error(str(e))
+        return 1
+    if not operator_token:
+        logger.error("Need --setup-token-file (or BENCH_SETUP_TOKEN)")
+        return 1
+    try:
+        operator_mcp = runner.MCPClient(args.mcp_endpoint, operator_token)
+        guard.record_golden(
+            operator_mcp, inventory.load_inventory(Path(args.inventory)),
+            Path(args.golden),
+        )
+    except (RuntimeError, runner.MCPError) as e:
+        logger.error(f"Golden not recorded: {e}")
+        return 1
+    logger.info(f"Golden fingerprints written to {args.golden}")
+    return 0
+
+
 def cmd_matrix(args: argparse.Namespace) -> int:
     """Run the headless client matrix against the bench MCP server.
 
@@ -466,6 +489,11 @@ def cmd_matrix(args: argparse.Namespace) -> int:
     """
     _configure_logging()
     signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    if args.record_golden:
+        return _record_golden(args)
+    if not args.scenarios or not args.out:
+        logger.error("--scenarios and --out are required to run the matrix")
+        return 1
     out = Path(args.out)
     if out.exists() and not args.resume:
         logger.error("Output manifest exists; pass --resume to continue it")
@@ -666,7 +694,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run headless clients x models x scenarios x bench devices",
         allow_abbrev=False,
     )
-    matrix_parser.add_argument("--scenarios", required=True,
+    matrix_parser.add_argument("--scenarios", default=None,
                                help="Scenario directory or single YAML file")
     matrix_parser.add_argument("--inventory", default="bench/devices.yaml")
     matrix_parser.add_argument("--clients-config", default="bench/clients.yaml")
@@ -685,7 +713,10 @@ def build_parser() -> argparse.ArgumentParser:
     matrix_parser.add_argument(
         "--server-version", default=None,
         help="Override the version read from srxmcp_status")
-    matrix_parser.add_argument("--out", required=True, help="Manifest v2 path")
+    matrix_parser.add_argument("--out", default=None, help="Manifest v2 path")
+    matrix_parser.add_argument(
+        "--record-golden", action="store_true",
+        help="Only write every device's fingerprint to --golden, then exit")
     matrix_parser.add_argument("--resume", action="store_true",
                                help="Continue an interrupted manifest at --out")
     matrix_parser.set_defaults(func=cmd_matrix)

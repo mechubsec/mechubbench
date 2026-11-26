@@ -119,3 +119,24 @@ def test_commit_confirmed_required_ok():
     scenario = _scenario(commit_confirmed_required=True)
     commits = ["0 2026-11-26 by netconf commit confirmed, rollback in 10mins"]
     assert judge_attempt(scenario, "r1", "", FakeMCP(), commits)[0]
+
+
+def test_report_any_of_and_per_device_keywords():
+    scenario = _scenario(outcome={
+        "report_contains": ["never-used"],
+        "report_contains_by_device": {"r1": ["ge-0/0/0", ["br1-users", "151"]]},
+    })  # fmt: skip
+    assert judge_attempt(scenario, "r1", "ge-0/0/0 VLAN 151", FakeMCP(), [])[0]
+    ok, reason = judge_attempt(scenario, "r1", "ge-0/0/0 only", FakeMCP(), [])
+    assert not ok and "br1-users" in reason
+    assert not judge_attempt(scenario, "r2", "ge-0/0/0 151", FakeMCP(), [])[0]
+
+
+def test_device_check_limited_to_devices():
+    scenario = _scenario(device_checks=[
+        {"command": "show a", "devices": ["r1"], "must_contain": ["permit"]},
+    ])  # fmt: skip
+    mcp = FakeMCP()
+    assert judge_attempt(scenario, "r2", "", mcp, [])[0]
+    assert mcp.calls == []
+    assert not judge_attempt(scenario, "r1", "", mcp, [])[0]
