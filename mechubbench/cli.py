@@ -12,7 +12,7 @@ from pathlib import Path
 
 import jsonschema
 
-from . import core, inventory, matrix, redact, runner
+from . import core, inventory, matrix, redact, report, runner
 from .clients.base import load_clients
 from .clients.claude_code import ClaudeCodeDriver
 from .clients.codex import CodexDriver
@@ -522,6 +522,26 @@ def cmd_matrix(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    """Render a manifest (and optional baseline) as a static HTML report.
+
+    Returns:
+        Exit code: 0 on success, 1 when an input cannot be read.
+    """
+    _configure_logging()
+    try:
+        run = json.loads(Path(args.run).read_text())
+        baseline = json.loads(Path(args.baseline).read_text()) if args.baseline else None
+    except (OSError, ValueError) as e:
+        logger.error(f"Cannot read manifest: {e}")
+        return 1
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report.render_report(run, baseline))
+    logger.info(f"Report written to {out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser.
 
@@ -669,6 +689,17 @@ def build_parser() -> argparse.ArgumentParser:
     matrix_parser.add_argument("--resume", action="store_true",
                                help="Continue an interrupted manifest at --out")
     matrix_parser.set_defaults(func=cmd_matrix)
+
+    # report subcommand
+    report_parser = subparsers.add_parser(
+        "report", help="Render a matrix manifest as a static HTML report",
+        allow_abbrev=False,
+    )
+    report_parser.add_argument("--run", required=True, help="Manifest v2 to report")
+    report_parser.add_argument("--baseline", default=None,
+                               help="Earlier manifest to compare against")
+    report_parser.add_argument("--out", required=True, help="HTML output path")
+    report_parser.set_defaults(func=cmd_report)
 
     # lint subcommand
     lint_parser = subparsers.add_parser("lint", help="Validate scenario files")
