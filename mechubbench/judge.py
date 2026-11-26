@@ -54,16 +54,17 @@ def _in_order(message: str, keywords: list[str]) -> bool:
 
 
 def _confirmed_window_closed(entries: list[str]) -> bool | None:
-    """None: no `commit confirmed`; else whether a plain commit followed one.
+    """None: no `commit confirmed`; else whether a plain commit followed the
+    newest one (an older confirmed-then-confirmed pair does not close it).
 
     ``entries`` are newest first, so "followed" means a lower index.
     """
-    confirmed = [i for i, entry in enumerate(entries) if "commit confirmed" in entry]
-    if not confirmed:
-        return None
-    return any(
-        "commit confirmed" not in entry for entry in entries[: max(confirmed)]
+    newest = next(
+        (i for i, entry in enumerate(entries) if "commit confirmed" in entry), None
     )
+    if newest is None:
+        return None
+    return any("commit confirmed" not in entry for entry in entries[:newest])
 
 
 def judge_attempt(
@@ -81,8 +82,8 @@ def judge_attempt(
     list is any-of; `outcome.report_order` keywords must occur in that order
     somewhere, earlier out-of-order mentions are ignored), device state via
     `device_checks` (a check with `devices` runs only for those devices), and
-    (when `commit_confirmed_required`) that a `commit confirmed` was later
-    confirmed by a plain commit on the same device.
+    (when `commit_confirmed_required`) that on every device with a `commit
+    confirmed`, the newest one was later confirmed by a plain commit.
 
     Args:
         scenario: Scenario dict (outcome.report_contains, device_checks, ...).
@@ -123,10 +124,14 @@ def judge_attempt(
             return False, failure
 
     if scenario.get("commit_confirmed_required"):
-        windows = [_confirmed_window_closed(e) for e in commits_by_device.values()]
-        if not any(window is not None for window in windows):
+        windows = [
+            window
+            for entries in commits_by_device.values()
+            if (window := _confirmed_window_closed(entries)) is not None
+        ]
+        if not windows:
             return False, "no commit confirmed found since baseline"
-        if not any(windows):
+        if not all(windows):
             return False, "commit confirmed not confirmed"
 
     return True, "all checks passed"

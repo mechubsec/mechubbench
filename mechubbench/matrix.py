@@ -83,9 +83,31 @@ def _verdict(cell: dict) -> str | None:
     return None
 
 
-def _write(manifest: dict, path: Path, allowed_literals: set[str]) -> None:
-    """Redact and atomically replace the manifest file."""
-    redacted = redact_manifest(manifest, allowed_literals=allowed_literals)
+def _scrub(value, secrets: list[str]):
+    """Replace every literal secret in every string of ``value`` (keys too)."""
+    if isinstance(value, str):
+        for secret in secrets:
+            value = value.replace(secret, "[REDACTED]")
+        return value
+    if isinstance(value, dict):
+        return {_scrub(key, secrets): _scrub(item, secrets)
+                for key, item in value.items()}  # fmt: skip
+    if isinstance(value, list):
+        return [_scrub(item, secrets) for item in value]
+    return value
+
+
+def _write(manifest: dict, path: Path, allowed_literals: set[str],
+           secrets: list[str]) -> None:  # fmt: skip
+    """Scrub literal tokens, redact, and atomically replace the manifest file.
+
+    The shape-based redactor cannot know a bare token a model echoed back
+    (hex, urlsafe, ``mcp_...``), so the tokens this run holds are removed
+    by value first.
+    """
+    redacted = redact_manifest(
+        _scrub(manifest, secrets), allowed_literals=allowed_literals
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     staging = path.with_name(f".{path.name}.tmp")
     staging.write_text(json.dumps(redacted, indent=2) + "\n")
@@ -304,6 +326,11 @@ def run_matrix(
         }
     # Device names and scenario literals must stay readable for report/resume.
     allowed = {device.name for device in inventory}
+    secrets = [
+        token
+        for token in (agent_token, getattr(operator_mcp, "token", None))
+        if isinstance(token, str) and token
+    ]
     for scenario in scenarios:
         allowed.update(scenario.get("expected_literals") or [])
 
@@ -334,12 +361,12 @@ def run_matrix(
                 while (verdict := _verdict(cell)) is None:
                     attempt_number = len(_counted(cell)) + 1
                     bench.attempt(cell, scenario, device, driver, attempt_number)
-                    _write(manifest, manifest_path, allowed)
+                    _write(manifest, manifest_path, allowed, secrets)
                 cell["verdict"] = verdict
                 cell["fails_before_pass"] = sum(
                     a["outcome"] != "pass" for a in _counted(cell)
                 )
         manifest["finished"] = _now()
     finally:
-        _write(manifest, manifest_path, allowed)
+        _write(manifest, manifest_path, allowed, secrets)
     return manifest

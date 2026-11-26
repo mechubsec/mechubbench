@@ -180,3 +180,21 @@ def test_report_order_ignores_out_of_order_preamble():
     assert judge_attempt(scenario, None, message, FakeMCP(), {})[0]
     only_unordered = "Devices: srx345, srx1600, srx440."
     assert not judge_attempt(scenario, None, only_unordered, FakeMCP(), {})[0]
+
+
+def test_commit_confirmed_newest_window_must_be_closed_on_every_device():
+    scenario = _scenario(commit_confirmed_required=True)
+    confirmed = "2026-11-26 10:00:00 UTC by netconf commit confirmed, rollback in 10"
+    plain = "2026-11-26 10:01:00 UTC by netconf via netconf"
+    reopened = "2026-11-26 10:02:00 UTC by netconf commit confirmed, rollback in 10"
+    # Newest first: confirmed -> plain -> confirmed again, still open.
+    ok, reason = judge_attempt(
+        scenario, "r1", "", FakeMCP(), {"r1": [reopened, plain, confirmed]}
+    )
+    assert not ok and reason == "commit confirmed not confirmed"
+    # One device closed, another left open.
+    commits = {"r1": [plain, confirmed], "r2": [confirmed]}
+    ok, reason = judge_attempt(scenario, "r1", "", FakeMCP(), commits)
+    assert not ok and reason == "commit confirmed not confirmed"
+    commits = {"r1": [plain, confirmed], "r2": [plain, confirmed], "r3": [plain]}
+    assert judge_attempt(scenario, "r1", "", FakeMCP(), commits)[0]

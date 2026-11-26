@@ -59,14 +59,24 @@ def dumps(value) -> str:
     return json.dumps(value)
 
 
-@pytest.mark.parametrize("expire_with", ["http", "jsonrpc"])
-def test_expired_session_reinitializes_and_retries_once(expire_with):
-    server = FakeServer(expire_with)
+def test_expired_session_reinitializes_and_retries_once():
+    server = FakeServer("http")
     with patch("httpx.post", side_effect=server):
         client = runner.MCPClient("http://bench/mcp", "tok-secret")
         assert client.call_tool("get_router_list", {}) == {"ok": "s2"}
     assert server.sessions == 2
     assert server.calls == ["s1", "s2"]
+
+
+def test_jsonrpc_session_error_is_not_retried():
+    """A NETCONF "session expired" from a device tool may follow a write."""
+    server = FakeServer("jsonrpc")
+    with patch("httpx.post", side_effect=server):
+        client = runner.MCPClient("http://bench/mcp", "tok-secret")
+        with pytest.raises(runner.MCPError) as caught:
+            client.call_tool("load_and_commit_config", {})
+    assert not isinstance(caught.value, runner.MCPSessionExpired)
+    assert server.sessions == 1 and server.calls == ["s1"]
 
 
 def test_second_expiry_is_raised_not_looped():

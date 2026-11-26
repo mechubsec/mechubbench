@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -34,11 +33,6 @@ class MCPError(Exception):
 class MCPSessionExpired(MCPError):
     """The server no longer knows this client's MCP session."""
 
-
-_SESSION_GONE = re.compile(
-    r"session (?:not found|expired|unknown|invalid)|(?:unknown|invalid|expired)"
-    r" session|no such session"
-)
 
 
 class MCPClient:
@@ -222,9 +216,11 @@ class MCPClient:
         Returns:
             Tool result dict (parsed from JSON in text content)
 
-        A call rejected because the server dropped the session (idle expiry,
-        restart) re-initializes once and is retried once; the server never
-        ran the rejected call, so the retry cannot apply anything twice.
+        A call the HTTP layer rejected because the server dropped the session
+        (400/404 naming the session: idle expiry, restart) re-initializes
+        once and is retried once; the server never ran it. JSON-RPC errors
+        are never retried: device errors such as a NETCONF "session expired"
+        arrive that way after the tool may already have written.
 
         Raises:
             MCPError: If MCP returns error or result format is unexpected
@@ -256,8 +252,6 @@ class MCPClient:
         # Check for JSON-RPC error
         if "error" in data:
             error_msg = data["error"].get("message", "Unknown error")
-            if _SESSION_GONE.search(str(error_msg).lower()):
-                raise MCPSessionExpired(f"MCP error: {error_msg}")
             raise MCPError(f"MCP error: {error_msg}")
 
         # Extract result from content

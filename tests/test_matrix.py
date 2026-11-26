@@ -564,3 +564,28 @@ def test_warm_up_once_per_model_and_failure_skips_model(tmp_path, monkeypatch):
     assert manifest["notes"] == [
         "hermes m1: not run, Ollama warm-up of m1 failed: refused"
     ]
+
+
+def test_bare_tokens_scrubbed_from_every_stored_string(tmp_path, monkeypatch):
+    Lab(monkeypatch)
+    operator_token = "c0ffee0123456789abcdef0123456789"
+
+    class Operator:
+        token = operator_token
+
+    class Echo(FakeDriver):
+        def run(self, prompt, model, mcp_url, token, timeout_s):
+            run = super().run(prompt, model, mcp_url, token, timeout_s)
+            run.final_message = f"I used {token} as the header, op {operator_token}"
+            run.raw_usage = {"note": token, token: 1}
+            return run
+
+    monkeypatch.setattr(matrix, "judge_attempt", lambda s, d, f, m, c: (False, f))
+    matrix.run_matrix(
+        [SCENARIO], [("codex", "m", Echo(["fail"] * 3))], [SRX], "http://bench/mcp",
+        TOKEN, Operator(), tmp_path / "run.json", "2.8.1", {}, agent_mcp="a",
+    )  # fmt: skip
+    text = (tmp_path / "run.json").read_text()
+    assert TOKEN not in text and operator_token not in text
+    attempt = _cell(json.loads(text))["attempts"][0]
+    assert attempt["final_message"].startswith("I used [REDACTED] as the header")
