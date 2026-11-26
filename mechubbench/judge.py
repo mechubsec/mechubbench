@@ -9,16 +9,25 @@ from mechubbench.runner import MCPError
 from mechubbench.scoring import score_scenario
 
 
+class JudgeInfraError(Exception):
+    """MCP server error or unreachable device while judging; not a model failure."""
+
+
 def _check_device(check: dict, device: str | None, mcp) -> str | None:
     """Run one device check; return a failure reason or None if it passes."""
     command = check["command"]
     target = check.get("device") or device
     try:
         result = mcp.call_tool(
-            "execute_junos_command", {"router_name": target, "command": command}
+            "execute_junos_command",
+            {"router_name": target, "command": command},
+            truncate=False,
         )
     except MCPError as exc:
-        return f"device check {command!r} failed to run: {exc}"
+        # MCPError messages already have the bearer token redacted.
+        raise JudgeInfraError(
+            f"device check {command!r} on {target} failed: {str(exc)[:200]}"
+        ) from exc
     output = result if isinstance(result, str) else json.dumps(result)
 
     for needle in check.get("must_contain", []):
@@ -55,6 +64,9 @@ def judge_attempt(
 
     Returns:
         (passed, reason)
+
+    Raises:
+        JudgeInfraError: MCP error while running a device check (infra, not a fail).
     """
     report_contains = scenario.get("outcome", {}).get("report_contains", [])
     if report_contains:

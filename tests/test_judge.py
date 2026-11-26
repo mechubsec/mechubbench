@@ -1,6 +1,8 @@
 """Tests for the scripted judge (fake MCP client)."""
 
-from mechubbench.judge import judge_attempt
+import pytest
+
+from mechubbench.judge import JudgeInfraError, judge_attempt
 from mechubbench.runner import MCPError
 
 
@@ -12,7 +14,8 @@ class FakeMCP:
         self.error = error
         self.calls = []
 
-    def call_tool(self, tool_name, arguments):
+    def call_tool(self, tool_name, arguments, truncate=True):
+        self.truncate = truncate
         self.calls.append((tool_name, arguments))
         if self.error:
             raise self.error
@@ -74,11 +77,34 @@ def test_device_scope_path_uses_check_device():
     assert mcp.calls[0][1]["router_name"] == "r2"
 
 
-def test_device_check_tool_error_fails():
+def test_device_check_mcp_error_is_infra_error():
     scenario = _scenario(device_checks=[{"command": "show x"}])
-    ok, reason = judge_attempt(scenario, "r1", "", FakeMCP(error=MCPError("boom")), [])
-    assert not ok
-    assert "boom" in reason
+    with pytest.raises(JudgeInfraError):
+        judge_attempt(scenario, "r1", "", FakeMCP(error=MCPError("boom")), [])
+
+
+def test_device_check_reads_untruncated_output():
+    scenario = _scenario(
+        device_checks=[{"command": "show x", "must_contain": ["TAIL"]}]
+    )
+    mcp = FakeMCP({"show x": "a" * 9000 + "TAIL"})
+    assert judge_attempt(scenario, "r1", "", mcp, [])[0]
+    assert mcp.truncate is False
+
+
+def test_call_tool_truncate_opt_out(monkeypatch):
+    from mechubbench.runner import MCPClient
+
+    client = MCPClient.__new__(MCPClient)
+    client._request_id = 0
+    client._session_id = "s"
+    client._post = lambda payload, session_id: None
+    big = "a" * 9000 + "TAIL"
+    client._parse_response_body = lambda response: {
+        "result": {"content": [{"type": "text", "text": big}]}
+    }
+    assert client.call_tool("t", {}, truncate=False) == big
+    assert client.call_tool("t", {}) != big
 
 
 def test_commit_confirmed_required_plain_commit_fails():

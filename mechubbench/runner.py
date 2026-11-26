@@ -188,12 +188,15 @@ class MCPClient:
 
         raise MCPError("No valid JSON-RPC payload found in SSE stream")
 
-    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict:
+    def call_tool(
+        self, tool_name: str, arguments: dict[str, Any], truncate: bool = True
+    ) -> dict:
         """Execute a tool via MCP protocol.
 
         Args:
             tool_name: Name of tool to call
             arguments: Tool arguments
+            truncate: Smart-truncate long text results (False for judge reads)
 
         Returns:
             Tool result dict (parsed from JSON in text content)
@@ -243,7 +246,7 @@ class MCPClient:
         except json.JSONDecodeError:
             # Not JSON - return raw text with smart truncation
             MAX_TEXT_LEN = 8000
-            if len(text_content) > MAX_TEXT_LEN:
+            if truncate and len(text_content) > MAX_TEXT_LEN:
                 # Check if tool args specified a config_path (already scoped)
                 config_path = arguments.get("config_path") or arguments.get("path")
                 truncated, was_truncated = smart_truncate_config(
