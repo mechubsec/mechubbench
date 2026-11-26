@@ -18,6 +18,7 @@ from mechubbench.clients.base import (
     execute,
     isolated_home,
     json_lines,
+    run_in_group,
 )
 
 PROVIDER = "bench-ollama"
@@ -48,17 +49,18 @@ def parse_hermes(
     final = result.get("text") or ""
     if result.get("error") or result.get("exit_code"):
         return final, None, model_id
+    # Hermes' input already excludes the cached prompt (cache_read is separate).
     if usage_file is not None and usage_file.exists():
         report = json.loads(usage_file.read_text())
-        counts = (report.get("input_tokens"), report.get("output_tokens"))
+        keys = ("input_tokens", "output_tokens", "cache_read_tokens")
+        counts = [report.get(key) for key in (*keys, "cache_write_tokens")]
     else:
         tokens = result.get("tokens") or {}
-        counts = (tokens.get("input"), tokens.get("output"))
+        counts = [tokens.get(key) for key in ("input", "output", "cache_read")]
+        counts.append(tokens.get("cache_write"))
     if counts[0] is None:
         return final, None, model_id
-    # Ollama has no prompt cache accounting, so the cache columns stay unknown.
-    usage = AttemptUsage(counts[0], counts[1], None, None)
-    return final, usage, model_id
+    return final, AttemptUsage(*counts), model_id
 
 
 class HermesDriver:
@@ -68,7 +70,7 @@ class HermesDriver:
         self,
         ollama_url: str,
         tmp_root: Path | None = None,
-        runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+        runner: Callable[..., subprocess.CompletedProcess] = run_in_group,
     ):
         self.ollama_url = ollama_url.rstrip("/")
         self.tmp_root = tmp_root

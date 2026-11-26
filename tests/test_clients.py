@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import time
 from pathlib import Path
 
 import httpx
+import pytest
 
+from mechubbench.clients.base import run_in_group, write_back
 from mechubbench.clients.claude_code import ClaudeCodeDriver, parse_claude
 from mechubbench.clients.codex import CodexDriver, isolated_catalog, parse_codex
 from mechubbench.clients.hermes import HermesDriver, ollama_models, parse_hermes
@@ -108,28 +112,41 @@ def test_parse_codex_sums_turns():
     stdout = "\n".join(json.dumps(event) for event in (turn, message, turn))
     final, usage, _ = parse_codex(stdout)
     assert final == "hi"
-    assert (usage.input_tokens, usage.output_tokens) == (20, 6)
+    # Codex's input_tokens includes the cached prefix; input is the uncached part.
+    assert (usage.input_tokens, usage.output_tokens) == (12, 6)
     assert usage.cache_read_tokens == 8
-    assert usage.cache_write_tokens is None
+    assert usage.cache_write_tokens is None  # not reported in these events
 
 
 def test_parse_codex_fixture():
     final, usage, _ = parse_codex(fixture("codex_ok.jsonl"))
     assert final == "ok"
-    assert usage.input_tokens > 0
+    assert usage.input_tokens == 13509 - 11648
+    assert usage.cache_read_tokens == 11648
+    assert usage.cache_write_tokens == 0  # reported as cache_write_input_tokens
 
 
 def test_parse_hermes_ok(tmp_path):
     usage_file = tmp_path / "usage.json"
-    usage_file.write_text(json.dumps({"input_tokens": 7, "output_tokens": 2}))
+    report = {"input_tokens": 7, "output_tokens": 2, "cache_read_tokens": 5}
+    usage_file.write_text(json.dumps(report))
     final, usage, model_id = parse_hermes(fixture("hermes_ok.jsonl"), usage_file)
     assert final == "ok"
     assert (usage.input_tokens, usage.output_tokens) == (7, 2)
-    assert usage.cache_read_tokens is None and usage.cache_write_tokens is None
+    assert usage.cache_read_tokens == 5 and usage.cache_write_tokens is None
     assert model_id == "glm-4.7-flash:latest"
     # Without a usage file the stream's result event supplies the counts.
     _, stream_usage, _ = parse_hermes(fixture("hermes_ok.jsonl"), None)
     assert stream_usage.input_tokens > 0
+    assert (stream_usage.cache_read_tokens, stream_usage.cache_write_tokens) == (0, 0)
+
+
+def test_parse_hermes_records_cache_read():
+    tokens = {"input": 223, "output": 9, "cache_read": 3901, "cache_write": 0}
+    result = {"type": "result", "exit_code": 0, "text": "ok", "tokens": tokens}
+    _, usage, _ = parse_hermes(json.dumps(result), None)
+    assert (usage.input_tokens, usage.cache_read_tokens) == (223, 3901)
+    assert usage.cache_write_tokens == 0
 
 
 def test_run_no_usage_is_infra_error(tmp_path):
@@ -211,3 +228,66 @@ def test_codex_refuses_model_missing_from_catalog(tmp_path):
     assert run.infra_error and "gpt-new" in run.infra_error
     assert run.usage is None
     assert runner.argv == []  # codex never started with fallback tool metadata
+
+
+def test_write_back_replaces_changed_login(tmp_path):
+    original = tmp_path / "auth.json"
+    original.write_text("old")
+    original.chmod(0o600)
+    copy = tmp_path / "copy.json"
+    copy.write_text("rotated")
+    write_back(copy, original)
+    assert original.read_text() == "rotated"
+    assert original.stat().st_mode & 0o777 == 0o600
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "auth.json",
+        "copy.json",
+    ]
+
+
+def test_write_back_leaves_unchanged_login(tmp_path):
+    original = tmp_path / "auth.json"
+    original.write_text("same")
+    os.utime(original, (1_000_000, 1_000_000))
+    copy = tmp_path / "copy.json"
+    copy.write_text("same")
+    write_back(copy, original)
+    assert original.stat().st_mtime == 1_000_000
+
+
+def test_driver_writes_back_rotated_claude_login(tmp_path):
+    credentials = fake_claude_auth(tmp_path)
+
+    class RotatingRunner(FakeRunner):
+        def __call__(self, argv, **kwargs):
+            rotated = Path(kwargs["cwd"]) / ".claude" / ".credentials.json"
+            rotated.write_text('{"rotated": true}')
+            return super().__call__(argv, **kwargs)
+
+    runner = RotatingRunner(fixture("claude_ok.json"))
+    ClaudeCodeDriver(tmp_root=tmp_path, runner=runner, credentials=credentials).run(
+        "hi", "claude-x", "http://mcp", "t", 60
+    )
+    assert credentials.read_text() == '{"rotated": true}'
+
+
+def test_run_in_group_kills_whole_group_on_timeout():
+    argv = ["sh", "-c", "echo $$; sleep 60 & sleep 60"]
+    with pytest.raises(subprocess.TimeoutExpired) as caught:
+        run_in_group(argv, capture_output=True, text=True, timeout=1)
+    group = int(caught.value.stdout.split()[0])
+    time.sleep(0.2)
+    assert live_group_members(group) == []
+
+
+def live_group_members(group: int) -> list[int]:
+    """Return non-zombie pids whose process group is ``group`` (Linux /proc)."""
+    members = []
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            fields = stat.read_text().rsplit(")", 1)[1].split()
+        except OSError:
+            continue
+        if int(fields[2]) == group and fields[0] != "Z":
+            members.append(int(stat.parent.name))
+    return members

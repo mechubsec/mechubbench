@@ -15,12 +15,16 @@ from mechubbench.clients.base import (
     execute,
     isolated_home,
     json_lines,
+    run_in_group,
+    write_back,
 )
 
 REAL_AUTH = Path.home() / ".codex" / "auth.json"
 REAL_MODELS_CACHE = Path.home() / ".codex" / "models_cache.json"
 
 # Built-in Codex features that give the model tools beyond the bench MCP server.
+# Accepted residual built-ins (no switch): list_mcp_resources,
+# list_mcp_resource_templates, read_mcp_resource, request_user_input.
 DISABLED_FEATURES = (
     "shell_tool",
     "unified_exec",
@@ -85,10 +89,15 @@ def parse_codex(stdout: str) -> tuple[str, AttemptUsage | None, str | None]:
         if event.get("type") != "turn.completed":
             continue
         usage = event.get("usage") or {}
-        totals = totals or {"input": 0, "cached": 0, "output": 0}
-        totals["input"] += usage.get("input_tokens", 0)
-        totals["cached"] += usage.get("cached_input_tokens", 0)
+        totals = totals or {"input": 0, "cached": 0, "output": 0, "write": None}
+        cached = usage.get("cached_input_tokens", 0)
+        # Codex's input_tokens includes the cached prefix; keep only the uncached.
+        totals["input"] += usage.get("input_tokens", 0) - cached
+        totals["cached"] += cached
         totals["output"] += usage.get("output_tokens", 0)
+        if "cache_write_input_tokens" in usage:
+            written = usage["cache_write_input_tokens"]
+            totals["write"] = (totals["write"] or 0) + written
     if totals is None:
         return final, None, None
     return (
@@ -97,7 +106,7 @@ def parse_codex(stdout: str) -> tuple[str, AttemptUsage | None, str | None]:
             input_tokens=totals["input"],
             output_tokens=totals["output"],
             cache_read_tokens=totals["cached"],
-            cache_write_tokens=None,
+            cache_write_tokens=totals["write"],
         ),
         None,
     )
@@ -109,7 +118,7 @@ class CodexDriver:
     def __init__(
         self,
         tmp_root: Path | None = None,
-        runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+        runner: Callable[..., subprocess.CompletedProcess] = run_in_group,
         auth: Path = REAL_AUTH,
         models_cache: Path = REAL_MODELS_CACHE,
     ):
@@ -162,4 +171,5 @@ class CodexDriver:
                 parse_codex,
             )
         finally:
+            write_back(home / "auth.json", self.auth)
             shutil.rmtree(home, ignore_errors=True)

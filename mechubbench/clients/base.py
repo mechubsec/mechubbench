@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import tempfile
 import time
@@ -88,6 +89,61 @@ def _first_line(*streams: str) -> str:
     return "client produced no output"
 
 
+def run_in_group(argv: list[str], **kwargs) -> subprocess.CompletedProcess:
+    """``subprocess.run`` in a new session; on timeout kill the whole group.
+
+    SIGTERM first, SIGKILL after 5 s, so grandchildren (MCP helpers, node
+    workers) do not outlive the attempt. Re-raises ``TimeoutExpired``.
+    """
+    timeout = kwargs.pop("timeout", None)
+    stdin = kwargs.pop("stdin", None)
+    if kwargs.pop("capture_output", False):
+        kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    with subprocess.Popen(
+        argv, stdin=stdin, start_new_session=True, **kwargs
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            _kill_group(process)
+            exc.stdout, exc.stderr = process.communicate()
+            raise
+        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+
+
+def _kill_group(process: subprocess.Popen) -> None:
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
+            return
+        if sig == signal.SIGTERM:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+
+
+def write_back(copy: Path, original: Path) -> None:
+    """Atomically replace ``original`` with ``copy`` if the client rewrote it.
+
+    Clients rotate OAuth refresh tokens inside the throwaway home; without
+    this the user's real login would hold a revoked token. Contents are never
+    logged.
+    """
+    if not copy.exists() or copy.read_bytes() == original.read_bytes():
+        return
+    handle, staging = tempfile.mkstemp(dir=original.parent, prefix=".bench-")
+    try:
+        with os.fdopen(handle, "wb") as staged:
+            staged.write(copy.read_bytes())
+        os.chmod(staging, 0o600)
+        os.replace(staging, original)
+    except BaseException:
+        Path(staging).unlink(missing_ok=True)
+        raise
+
+
 def execute(
     argv: list[str],
     env: dict[str, str],
@@ -109,8 +165,6 @@ def execute(
             timeout=timeout_s,
         )
     except subprocess.TimeoutExpired as exc:
-        # shortcut: subprocess.run kills only the direct child; grandchildren
-        # may linger until they notice the closed pipes.
         final, usage, model_id = parse(_text(exc.stdout))
         return ClientRun(
             exit_code=-1,

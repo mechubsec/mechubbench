@@ -14,6 +14,8 @@ from mechubbench.clients.base import (
     client_env,
     execute,
     isolated_home,
+    run_in_group,
+    write_back,
 )
 
 REAL_CREDENTIALS = Path.home() / ".claude" / ".credentials.json"
@@ -54,7 +56,7 @@ class ClaudeCodeDriver:
     def __init__(
         self,
         tmp_root: Path | None = None,
-        runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+        runner: Callable[..., subprocess.CompletedProcess] = run_in_group,
         credentials: Path = REAL_CREDENTIALS,
     ):
         self.tmp_root = tmp_root
@@ -105,4 +107,5 @@ class ClaudeCodeDriver:
                 parse_claude,
             )
         finally:
+            write_back(home / ".claude" / ".credentials.json", self.credentials)
             shutil.rmtree(home, ignore_errors=True)
