@@ -1,0 +1,11 @@
+devices:
+  - {name: bench-ex2300, platform: ex, release: 23.4R2-S2.1, mgmt_instance: false}
+  - {name: bench-srx1600, platform: srx-classic, release: 25.4R1.12, mgmt_instance: true}
+  - {name: bench-srx440, platform: srx-evo, release: 25.4X300-D40.2-EVO, mgmt_instance: true}
+  - {name: bench-srx345, platform: srx-classic, release: 25.4R1-S2.3, mgmt_instance: false}
+  - {name: bench-vsrx-inet, platform: vsrx, release: 26.2R1.7, mgmt_instance: true}
+  - {name: bench-csrx, platform: csrx, release: 26.2R1.7, mgmt_instance: false}
+hosts:
+  A: 10.66.151.10
+  B: 10.66.162.10
+  C: 10.66.171.10

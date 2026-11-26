@@ -110,6 +110,44 @@
         }
       }
     },
+    "platforms": {
+      "type": "array",
+      "description": "Platforms the scenario runs on (default: all)",
+      "items": {"enum": ["ex", "srx-classic", "srx-evo", "vsrx", "csrx"]}
+    },
+    "requires": {
+      "type": "array",
+      "description": "Device capabilities required",
+      "items": {"enum": ["mgmt_instance"]}
+    },
+    "device_scope": {
+      "enum": ["per_device", "path"],
+      "description": "per_device (default) runs once per device; path is one multi-device record"
+    },
+    "devices": {
+      "type": "array",
+      "description": "Explicit device subset, intersected with platforms",
+      "items": {"type": "string"}
+    },
+    "fault": {
+      "type": "string",
+      "description": "Set lines planted by the operator before the attempt, removed by restore"
+    },
+    "device_checks": {
+      "type": "array",
+      "description": "Post-attempt device command checks",
+      "items": {
+        "type": "object",
+        "required": ["command"],
+        "properties": {
+          "command": {"type": "string"},
+          "must_contain": {"type": "array", "items": {"type": "string"}},
+          "must_match": {"type": "string"},
+          "must_not_contain": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "commit_confirmed_required": {"type": "boolean"},
     "domain": {
       "type": "string",
       "description": "Config domain for smart truncation (e.g., 'system ntp', 'security policies')"
