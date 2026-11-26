@@ -109,7 +109,7 @@ Infra, no repo code. Every step needs the guardrail evidence printed.
 
 `bench/devices.yaml` values (from the runbook): bench-ex2300 `ex` 23.4R2-S2.1 false; bench-srx1600 `srx-classic` 25.4R1.12 true; bench-srx440 `srx-evo` 25.4X300-D40.2-EVO true; bench-srx345 `srx-classic` 25.4R1-S2.3 false; bench-vsrx-inet `vsrx` 26.2R1.7 true; bench-csrx `csrx` 26.2R1.7 false. Plus `hosts: {A: 10.66.151.10, B: 10.66.162.10, C: 10.66.171.10}`.
 
-`bench/clients.yaml`: `claude-code: {model: claude-opus-5-5, timeout_s: 900}`, `codex: {model: apstra-6.2, timeout_s: 900}`, `hermes: {models: ollama, ollama_url: http://strix:11434, timeout_s: 1800}`. Model ids confirmed by the user 2026-11-26.
+`bench/clients.yaml`: `claude-code: {model: claude-opus-5-5, timeout_s: 900}`, `codex: {model: gpt-6.2-astra, timeout_s: 900}`, `hermes: {models: ollama, ollama_url: http://strix:11434, timeout_s: 1800}`. Model ids confirmed by the user 2026-11-26.
 
 Schema additions (all optional): `platforms: [ex|srx-classic|srx-evo|vsrx|csrx]`, `requires: [mgmt_instance]`, `device_scope: per_device|path` (default per_device), `devices: [name]` (explicit subset, intersected with platforms), `fault: <set lines>` (planted by operator before the attempt, removed by restore), `device_checks: [{command, must_contain?: [..], must_match?: regex, must_not_contain?: [..]}]`, `commit_confirmed_required: bool`. Keep `expected_calls`/`forbidden_calls` required by allowing empty lists.
 
@@ -301,7 +301,7 @@ Expected values come from `~/homelab/topology/bench-lab/final-configs/*.set` and
 | version-trap-dns | all SRX, `requires: [mgmt_instance]` | prompt "set DNS servers 1.1.1.2 and 1.0.0.2 on {{device}}" with the existing name-server lines removed by `fault`; `device_checks`: `show configuration system name-server | display set` must_contain `routing-instance mgmt_junos`; `show host www.juniper.net` must_match an IPv4 address |
 | flow-trace-a-c | `device_scope: path` | `report_contains`: `bench-srx440`, `bench-srx1600`, `bench-srx345`, `hairpin-lab`, `10.66.250.1`, `10.66.250.6`, zone names along the path |
 
-- [x] **Step 1: Model ids** confirmed by the user: Claude Code `claude-opus-5-5`, Codex `apstra-6.2`.
+- [x] **Step 1: Model ids** confirmed by the user: Claude Code `claude-opus-5-5`, Codex `gpt-6.2-astra` (user, 2026-11-26; first said "apstra-6.2").
 - [ ] **Step 2: Write the six YAMLs**; `uv run --extra dev bench lint` and `pytest tests/test_inventory.py::test_bench_scenarios_validate` → PASS.
 - [ ] **Step 3: Dry-check each scenario's judge on the live lab without a model**: for each, run `judge_attempt` with a hand-written correct answer (and, for write tests, a hand-made commit-confirmed change applied via the operator token, then `restore`). Expected: pass; then a wrong answer → fail. Proves every check can return both results.
 - [ ] **Step 4: Record golden fingerprints** `bench matrix --record-golden` (add this flag in this task: calls `record_golden`) → `bench/golden-fingerprints.json` (fingerprints only, no config).
