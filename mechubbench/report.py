@@ -28,7 +28,7 @@ svg text{fill:var(--fg);font:11px system-ui,sans-serif}
 .hatch{stroke:var(--bad);stroke-width:2}.fail{fill:var(--bad)}
 .wrap{overflow-x:auto}table{border-collapse:collapse;font-size:.9em}
 th,td{border:1px solid var(--line);padding:3px 8px;text-align:left}
-td.n{text-align:right}.pass{color:var(--ok)}.full_failure{color:var(--bad)}
+td.n{text-align:right}.pass{color:var(--ok)}.full_failure{color:var(--bad)}.infra_error{color:var(--muted);font-style:italic}
 .flag{background:var(--box);border:1px solid var(--warn);padding:8px 12px}
 """
 
@@ -45,9 +45,17 @@ def _passing_attempt(cell: dict) -> dict | None:
     return next((a for a in cell["attempts"] if a["outcome"] == "pass"), None)
 
 
-def _total_tokens(attempt: dict) -> int:
+def _total_tokens(attempt: dict) -> int | None:
+    """Input + output; None when neither is reported (no data, not zero)."""
     tokens = attempt.get("tokens") or {}
+    if tokens.get("input") is None and tokens.get("output") is None:
+        return None
     return (tokens.get("input") or 0) + (tokens.get("output") or 0)
+
+
+def _mean_or_none(values: list) -> float | None:
+    present = [v for v in values if v is not None]
+    return mean(present) if present else None
 
 
 def _group(run: dict | None) -> dict:
@@ -67,46 +75,64 @@ def _aggregate(cells: list[dict] | None) -> dict | None:
     if not passes:
         text = "full failure" if full_failures else "infra error"
         return {"tokens": None, "wall": None, "label": text, "passes": 0,
-                "total": len(cells)}  # fmt: skip
+                "total": len(cells), "failed": bool(full_failures)}  # fmt: skip
     attempts = [_passing_attempt(c) for c in passes]
     fails = sum(c["fails_before_pass"] for c in passes)
     label = f"pass after {fails} fails" if fails else "pass"
     if full_failures:
         label += f" ({full_failures} full failure)"
     return {
-        "tokens": mean(_total_tokens(a) for a in attempts),
+        "tokens": _mean_or_none([_total_tokens(a) for a in attempts]),
         "wall": mean(a["wall_s"] for a in attempts),
         "label": label,
         "passes": len(passes),
         "total": len(cells),
+        "failed": False,
     }
 
 
-def _chart(title: str, rows: list, key: str, unit: str, test: str) -> str:
-    """Horizontal bars; rows are (label, this-run agg, baseline agg)."""
+def _chart(title: str, rows: list, key: str, unit: str, test: str,
+           compared: bool) -> str:
+    """Horizontal bars; rows are (label, this-run agg, baseline agg).
+
+    With a baseline both series are always drawn (an absent side is "—");
+    value text is prefixed base/run so nothing relies on colour alone.
+    """
     values = [
         agg[key] for _, run_agg, base_agg in rows
         for agg in (run_agg, base_agg) if agg and agg[key] is not None
     ]  # fmt: skip
     top = max(values, default=0) or 1
-    width, bar_max, height = 360, 230, 0
+    width, char_px = 460, 6.5
+    texts = [
+        f"base 9,999,999{unit} {agg['label']}"
+        for _, run_agg, base_agg in rows for agg in (run_agg, base_agg) if agg
+    ]  # fmt: skip
+    longest = max((len(t) for t in texts), default=0) * char_px
+    bar_max = max(40, width - 8 - longest)
+    height = 0
     parts = []
     for label, run_agg, base_agg in rows:
-        parts.append(
-            f'<text x="0" y="{height + 11}">{escape(label)}</text>'
-        )
+        parts.append(f'<text x="0" y="{height + 11}">{escape(label)}</text>')
         height += 15
-        series = [("basebar", "baseline", base_agg)] if base_agg is not None else []
-        if run_agg is not None or base_agg is not None:
-            series.append(("bar", "run", run_agg))
+        series = [("bar", "run", run_agg)]
+        if compared:
+            series.insert(0, ("basebar", "base", base_agg))
         for css, who, agg in series:
+            prefix = f"{who} " if compared else ""
+            y = height
             if agg is None:
-                parts.append(f'<text x="0" y="{height + 10}" class="v">—</text>')
+                parts.append(f'<text x="0" y="{y + 10}" class="v">{prefix}—</text>')
+            elif agg["passes"] == 0 and agg["failed"]:
+                parts.append(
+                    f'<rect x="0" y="{y}" width="{bar_max:.1f}" height="11" '
+                    f'fill="none" class="hatch" stroke-dasharray="3 3"/>'
+                    f'<text x="{bar_max + 6:.1f}" y="{y + 10}" class="fail">'
+                    f'{prefix}{escape(agg["label"])}</text>'
+                )
             elif agg[key] is None:
                 parts.append(
-                    f'<rect x="0" y="{height}" width="{bar_max}" height="11" '
-                    f'fill="none" class="hatch" stroke-dasharray="3 3"/>'
-                    f'<text x="{bar_max + 6}" y="{height + 10}" class="fail">'
+                    f'<text x="0" y="{y + 10}" class="v">{prefix}'
                     f'{escape(agg["label"])}</text>'
                 )
             else:
@@ -114,8 +140,8 @@ def _chart(title: str, rows: list, key: str, unit: str, test: str) -> str:
                 data_id = escape(f"{label}|{test}|{who}", quote=True)
                 parts.append(
                     f'<rect class="{css}" data-id="{data_id}" x="0" '
-                    f'y="{height}" width="{bar:.1f}" height="11"/>'
-                    f'<text x="{bar + 6:.1f}" y="{height + 10}" class="v">'
+                    f'y="{y}" width="{bar:.1f}" height="11"/>'
+                    f'<text x="{bar + 6:.1f}" y="{y + 10}" class="v">{prefix}'
                     f'{_num(agg[key], 1 if unit == "s" else 0)}{unit} '
                     f'{escape(agg["label"])}</text>'
                 )
@@ -152,31 +178,35 @@ def _device_table(cells: list[dict]) -> str:
 
 
 def _rate(cells: list[dict] | None) -> str:
-    if not cells:
+    """passes/cells, infra errors excluded from the denominator."""
+    scored = [c for c in cells or [] if c["verdict"] in ("pass", "full_failure")]
+    if not scored:
         return "—"
-    return f"{sum(c['verdict'] == 'pass' for c in cells)}/{len(cells)}"
+    return f"{sum(c['verdict'] == 'pass' for c in scored)}/{len(scored)}"
 
 
 def _averages(run: dict, labels: list[str]) -> str:
-    """Per-model mean over passing cells only (full failures and infra excluded)."""
+    """Per model: pass rate, and averages taken per test over passing cells,
+    then meaned across the tests the model passed."""
+    grouped = _group(run)
+    tests = sorted({t for _, t in grouped})
     rows = []
     for label in labels:
-        attempts = [
-            _passing_attempt(c) for c in run["results"]
-            if _label(c) == label and c["verdict"] == "pass"
-        ]  # fmt: skip
-        if not attempts:
-            rows.append(f"<tr><td>{escape(label)}</td><td></td><td></td></tr>")
-            continue
-        tokens = mean(_total_tokens(a) for a in attempts)
-        wall = mean(a["wall_s"] for a in attempts)
+        aggs = [_aggregate(grouped.get((label, t))) for t in tests]
+        passed = [a for a in aggs if a and a["passes"]]
+        tokens = _mean_or_none([a["tokens"] for a in passed])
+        wall = _mean_or_none([a["wall"] for a in passed])
+        cells = [c for t in tests for c in grouped.get((label, t), [])]
         rows.append(
-            f'<tr><td>{escape(label)}</td><td class="n">{tokens:,.0f}</td>'
-            f'<td class="n">{wall:.1f}</td></tr>'
+            f'<tr><td>{escape(label)}</td><td class="n">{_rate(cells)}</td>'
+            f'<td class="n">{_num(tokens)}</td>'
+            f'<td class="n">{_num(wall, 1)}</td></tr>'
         )
     return (
-        '<div class="wrap"><table><tr><th>model</th><th>avg tokens</th>'
-        f'<th>avg wall s</th></tr>{"".join(rows)}</table></div>'
+        '<div class="wrap"><table><tr><th>model</th><th>pass rate</th>'
+        "<th>avg tokens (per test, then mean of tests passed)</th>"
+        "<th>avg wall s (per test, then mean of tests passed)</th></tr>"
+        f'{"".join(rows)}</table></div>'
     )
 
 
@@ -214,6 +244,11 @@ def render_report(run: dict, baseline: dict | None = None) -> str:
     versions = ", ".join(escape(str(r.get("server_version"))) for r in runs)
     ids = " vs ".join(escape(str(r.get("run_id"))) for r in reversed(runs))
 
+    legend = (
+        f'<p class="note">grey = baseline {escape(str(baseline.get("run_id")))}, '
+        f'blue = this run {escape(str(run.get("run_id")))}; '
+        "\u2014 = no data in that run</p>" if baseline else ""
+    )
     sections = []
     for test in tests:
         rows = [
@@ -223,12 +258,12 @@ def render_report(run: dict, baseline: dict | None = None) -> str:
         ]  # fmt: skip
         # Baseline-only cells still need a row: mark the run side missing.
         charts = (
-            _chart("Total tokens", rows, "tokens", "", test)
-            + _chart("Wall seconds", rows, "wall", "s", test)
+            _chart("Total tokens", rows, "tokens", "", test, bool(baseline))
+            + _chart("Wall seconds", rows, "wall", "s", test, bool(baseline))
         )
         cells = [c for c in run["results"] if c["test"] == test]
         sections.append(
-            f"<h2>{escape(test)}</h2><div class=\"charts\">{charts}</div>"
+            f"<h2>{escape(test)}</h2>{legend}<div class=\"charts\">{charts}</div>"
             f"<details><summary>Devices</summary>{_device_table(cells)}</details>"
         )
 
@@ -258,6 +293,6 @@ def render_report(run: dict, baseline: dict | None = None) -> str:
         f'{escape(str(run.get("started")))}<br>'
         f'{"; ".join(escape(m) for m in labels)}</p>'
         f"{_ollama_flag(run)}<h2>Summary</h2>{summary}"
-        f"<h2>Averages (passes only)</h2>{_averages(run, labels)}"
+        f"<h2>Pass rate and averages (passes only)</h2>{_averages(run, labels)}"
         f'{"".join(sections)}<p class="note">{escape(FOOTNOTE)}</p></body></html>'
     )

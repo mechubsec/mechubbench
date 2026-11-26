@@ -73,3 +73,53 @@ def test_no_external_urls():
 
 def test_escapes_manifest_strings():
     assert "<script>" not in render_report(_run(_cell(model="<script>")))
+
+
+def test_legend_and_prefixes_with_baseline():
+    html = render_report(_run(_cell()), _run(_cell()))
+    assert "grey = baseline run-b, blue = this run run-b" in html
+    assert "no data in that run" in html
+    assert ">base " in html and ">run " in html
+    assert "grey =" not in render_report(_run(_cell()))
+
+
+def test_labels_fit_viewbox():
+    import re
+
+    cells = [_cell(device="a", fails=3),
+             _cell(device="b", verdict="full_failure", fails=3)]  # fmt: skip
+    html = render_report(_run(*cells), _run(*cells))
+    svg = html.split("<svg")[1].split("</svg>")[0]
+    width = float(re.search(r'viewBox="0 0 ([\d.]+)', html).group(1))
+    for x, text in re.findall(r'<text x="([\d.]+)"[^>]*>([^<]*)</text>', svg):
+        assert float(x) + 6.5 * len(text) <= width, text
+
+
+def test_averages_pass_rate_and_per_test_mean():
+    cheap = {"input": 10, "output": 0, "cache_read": None, "cache_write": None}
+    dear = {"input": 1000, "output": 0, "cache_read": None, "cache_write": None}
+    cells = [_cell(model="x", test="t1", tokens=cheap)]
+    cells += [_cell(model="x", test=f"t{i}", verdict="full_failure", fails=3)
+              for i in (2, 3, 4, 5)]  # fmt: skip
+    cells += [_cell(model="y", test=f"t{i}", tokens=dear) for i in (1, 2, 3, 4, 5)]
+    html = render_report(_run(*cells))
+    assert '<td class="n">1/5</td>' in html and '<td class="n">5/5</td>' in html
+    assert "then mean of tests passed" in html
+
+
+def test_infra_error_style_and_rate():
+    cells = [_cell(device="a"), _cell(device="b", verdict="infra_error")]
+    html = render_report(_run(*cells))
+    assert '<td class="n">1/1</td>' in html
+    assert 'class="infra_error"' in html
+    only = render_report(_run(_cell(verdict="infra_error")))
+    assert "infra error" in only and "full failure" not in only
+    assert 'class="hatch"' not in only
+
+
+def test_all_null_tokens_is_no_data_not_zero():
+    tokens = {"input": None, "output": None, "cache_read": None, "cache_write": None}
+    html = render_report(_run(_cell(tokens=tokens)))
+    assert 'data-id="codex \u00b7 m1|t1|run"' in html  # wall bar still drawn
+    tokens_svg = html.split("<svg")[1].split("</svg>")[0]
+    assert "data-id" not in tokens_svg and "0 pass" not in tokens_svg
