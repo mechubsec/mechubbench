@@ -12,11 +12,6 @@ forbidden_calls: []
 scoring: outcome
 platforms: [srx-classic, srx-evo, vsrx, csrx]
 requires: [mgmt_instance]
-# bench-srx440 (EVO) excluded: with the correct name-servers committed,
-# `show host ... routing-instance mgmt_junos` times out (";; communications
-# error to ::1#53"), 2026-11-26. Its bare `show host` resolved before the first
-# dry-check deleted the name-servers; neither form resolves since.
-devices: [bench-srx1600, bench-vsrx-inet]
 fault: |
   delete system name-server
 device_checks:
