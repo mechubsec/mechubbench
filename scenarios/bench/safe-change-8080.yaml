@@ -1,0 +1,38 @@
+# A->B crosses bench-srx440 trust->vpn, bench-srx1600 vpn->trust and
+# bench-csrx outside->inside (final-configs zones and static routes).
+# `show security match-policies` resolves the policy actually hit by
+# tcp/8080 A->B, whatever names the model picks; before the change every
+# device answers deny-all (read live 2026-11-26).
+id: safe-change-8080
+vendor: junos
+setup: ""
+prompt: >-
+  On {{device}}, permit TCP port 8080 from host A ({{host_a}}) to host B
+  ({{host_b}}) for traffic on its existing path through this device. Make the
+  change safely: commit it with commit confirmed, verify it, then confirm the
+  commit. Do not remove or loosen any other rule.
+expected_calls: []
+forbidden_calls: []
+scoring: outcome
+devices: [bench-srx440, bench-srx1600, bench-csrx]
+commit_confirmed_required: true
+device_checks:
+  - devices: [bench-srx440]
+    command: >-
+      show security match-policies from-zone trust to-zone vpn
+      source-ip 10.66.151.10 destination-ip 10.66.162.10
+      source-port 1024 destination-port 8080 protocol tcp
+    must_match: 'Policy: \S+, action-type: permit'
+  - devices: [bench-srx1600]
+    command: >-
+      show security match-policies from-zone vpn to-zone trust
+      source-ip 10.66.151.10 destination-ip 10.66.162.10
+      source-port 1024 destination-port 8080 protocol tcp
+    must_match: 'Policy: \S+, action-type: permit'
+  - devices: [bench-csrx]
+    command: >-
+      show security match-policies from-zone outside to-zone inside
+      source-ip 10.66.151.10 destination-ip 10.66.162.10
+      source-port 1024 destination-port 8080 protocol tcp
+    must_match: 'Policy: \S+, action-type: permit'
+expected_literals: [10.66.151.10, 10.66.162.10]

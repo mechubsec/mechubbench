@@ -297,3 +297,14 @@ class TestDenylistedToolAlwaysFails:
         transcript = [{"tool": "get_junos_config", "args": {"device": "srx1"}}]
         result = scoring.score_scenario(scenario, transcript)
         assert result["pass"] is True
+
+
+def test_report_contains_any_of_item():
+    from mechubbench.scoring import score_scenario
+
+    keywords = ["ge-0/0/0", ["br1-users", "vlan 151"]]
+    scenario = {"scoring": "outcome", "outcome": {"report_contains": keywords}}
+    assert score_scenario(scenario, [], final_message="ge-0/0/0 in VLAN 151")["pass"]
+    assert score_scenario(scenario, [], final_message="ge-0/0/0, br1-users")["pass"]
+    failed = score_scenario(scenario, [], final_message="ge-0/0/0 vlan 152")
+    assert not failed["pass"] and "br1-users" in failed["reason"]

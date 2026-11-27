@@ -55,3 +55,5 @@ e92f66c0235022109977616fd1bbd0aea492b4fe:tests/test_redact.py:pem-private-key:79
 21a5a1b6031cd00f36baf165b416fa75f6d30383:tests/test_redact.py:vendor-keyword-anchored-secret:773
 21a5a1b6031cd00f36baf165b416fa75f6d30383:tests/test_redact.py:private-key:786
 21a5a1b6031cd00f36baf165b416fa75f6d30383:tests/test_redact.py:pem-private-key:786
+# Synthetic token in the token-scrub test (tests/test_matrix.py), not a credential.
+f491878188ba992574cba925aadfa922910f0c2b:tests/test_matrix.py:generic-api-key:571

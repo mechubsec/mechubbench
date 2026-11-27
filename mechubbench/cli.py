@@ -12,7 +12,11 @@ from pathlib import Path
 
 import jsonschema
 
-from . import core, redact, runner
+from . import core, guard, inventory, matrix, redact, report, runner
+from .clients.base import load_clients
+from .clients.claude_code import ClaudeCodeDriver
+from .clients.codex import CodexDriver
+from .clients.hermes import HermesDriver, ollama_models
 
 logger = logging.getLogger(__name__)
 
@@ -433,6 +437,145 @@ def cmd_lint(args: argparse.Namespace) -> int:
     return 0
 
 
+def _matrix_entries(config: dict, wanted: list[str]) -> list[tuple]:
+    """Build (client, model, driver) entries; Hermes expands per Ollama model."""
+    entries = []
+    for client in wanted:
+        settings = config[client]
+        if client == "claude-code":
+            entries.append((client, settings["model"], ClaudeCodeDriver()))
+        elif client == "codex":
+            entries.append((client, settings["model"], CodexDriver()))
+        elif client == "hermes":
+            driver = HermesDriver(settings["ollama_url"])
+            models = settings["models"]
+            if models == "ollama":
+                # Embedding models cannot chat; they would only add infra errors.
+                models = [
+                    name
+                    for name in ollama_models(settings["ollama_url"])
+                    if "embed" not in name
+                ]
+            entries.extend((client, model, driver) for model in models)
+        else:
+            raise ValueError(f"unknown client {client!r}")
+    return entries
+
+
+def _record_golden(args: argparse.Namespace) -> int:
+    """Write every bench device's config fingerprint to --golden."""
+    try:
+        operator_token = _read_token(args.setup_token_file, "BENCH_SETUP_TOKEN")
+    except ValueError as e:
+        logger.error(str(e))
+        return 1
+    if not operator_token:
+        logger.error("Need --setup-token-file (or BENCH_SETUP_TOKEN)")
+        return 1
+    try:
+        operator_mcp = runner.MCPClient(args.mcp_endpoint, operator_token)
+        guard.record_golden(
+            operator_mcp, inventory.load_inventory(Path(args.inventory)),
+            Path(args.golden),
+        )
+    except (RuntimeError, runner.MCPError) as e:
+        logger.error(f"Golden not recorded: {e}")
+        return 1
+    logger.info(f"Golden fingerprints written to {args.golden}")
+    return 0
+
+
+def cmd_matrix(args: argparse.Namespace) -> int:
+    """Run the headless client matrix against the bench MCP server.
+
+    Returns:
+        Exit code: 0 when every cell has a verdict, 1 on drift, a failed
+        restore or bad input.
+    """
+    _configure_logging()
+    signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    if args.record_golden:
+        return _record_golden(args)
+    if not args.scenarios or not args.out:
+        logger.error("--scenarios and --out are required to run the matrix")
+        return 1
+    out = Path(args.out)
+    if out.exists() and not args.resume:
+        logger.error("Output manifest exists; pass --resume to continue it")
+        return 1
+    try:
+        agent_token = _read_token(args.mcp_token_file, "BENCH_TOKEN")
+        operator_token = _read_token(args.setup_token_file, "BENCH_SETUP_TOKEN")
+    except ValueError as e:
+        logger.error(str(e))
+        return 1
+    if not agent_token or not operator_token:
+        logger.error(
+            "Need --mcp-token-file (or BENCH_TOKEN) and --setup-token-file "
+            "(or BENCH_SETUP_TOKEN)"
+        )
+        return 1
+
+    scenarios_path = Path(args.scenarios)
+    if scenarios_path.is_dir():
+        scenarios = core.load_scenarios(scenarios_path)
+    else:
+        scenarios = [core.load_scenario(scenarios_path)]
+    inventory_path = Path(args.inventory)
+    devices = inventory.load_inventory(inventory_path)
+    hosts = inventory.load_hosts(inventory_path)
+    config = load_clients(Path(args.clients_config))
+    wanted = args.clients.split(",") if args.clients else list(config)
+    golden = json.loads(Path(args.golden).read_text())
+
+    try:
+        entries = _matrix_entries(config, wanted)
+        operator_mcp = runner.MCPClient(args.mcp_endpoint, operator_token)
+        server_version = args.server_version or operator_mcp.call_tool(
+            "srxmcp_status", {}
+        ).get("version", "unknown")
+        manifest = matrix.run_matrix(
+            scenarios,
+            entries,
+            devices,
+            args.mcp_endpoint,
+            agent_token,
+            operator_mcp,
+            out,
+            server_version,
+            golden,
+            hosts=hosts,
+            timeouts={name: config[name].get("timeout_s", 900) for name in wanted},
+            resume=args.resume,
+            server_version_overridden=bool(args.server_version),
+        )
+    except (RuntimeError, ValueError, KeyError, runner.MCPError) as e:
+        logger.error(f"Matrix stopped: {e}")
+        return 1
+    logger.info(f"Matrix complete: {len(manifest['results'])} cell(s) in {out}")
+    return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    """Render a manifest (and optional baseline) as a static HTML report.
+
+    Returns:
+        Exit code: 0 on success, 1 when an input cannot be read.
+    """
+    _configure_logging()
+    try:
+        run = json.loads(Path(args.run).read_text())
+        baseline = json.loads(Path(args.baseline).read_text()) if args.baseline else None
+    except (OSError, ValueError) as e:
+        logger.error(f"Cannot read manifest: {e}")
+        return 1
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report.render_report(run, baseline))
+    logger.info(f"Report written to {out}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser.
 
@@ -550,6 +693,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output path for tools JSON (e.g., tools/junos-tools.json)",
     )
     export_parser.set_defaults(func=cmd_export_tools)
+
+    # matrix subcommand
+    matrix_parser = subparsers.add_parser(
+        "matrix",
+        help="Run headless clients x models x scenarios x bench devices",
+        allow_abbrev=False,
+    )
+    matrix_parser.add_argument("--scenarios", default=None,
+                               help="Scenario directory or single YAML file")
+    matrix_parser.add_argument("--inventory", default="bench/devices.yaml")
+    matrix_parser.add_argument("--clients-config", default="bench/clients.yaml")
+    matrix_parser.add_argument(
+        "--clients", default=None,
+        help="Comma-separated subset of clients (default: all in config)")
+    matrix_parser.add_argument("--mcp-endpoint", required=True,
+                               help="Bench MCP endpoint URL")
+    matrix_parser.add_argument(
+        "--mcp-token-file", default=None,
+        help="Agent token file (or BENCH_TOKEN env var); never a bare value")
+    matrix_parser.add_argument(
+        "--setup-token-file", default=None,
+        help="Operator token file (or BENCH_SETUP_TOKEN env var)")
+    matrix_parser.add_argument("--golden", default="bench/golden-fingerprints.json")
+    matrix_parser.add_argument(
+        "--server-version", default=None,
+        help="Override the version read from srxmcp_status")
+    matrix_parser.add_argument("--out", default=None, help="Manifest v2 path")
+    matrix_parser.add_argument(
+        "--record-golden", action="store_true",
+        help="Only write every device's fingerprint to --golden, then exit")
+    matrix_parser.add_argument("--resume", action="store_true",
+                               help="Continue an interrupted manifest at --out")
+    matrix_parser.set_defaults(func=cmd_matrix)
+
+    # report subcommand
+    report_parser = subparsers.add_parser(
+        "report", help="Render a matrix manifest as a static HTML report",
+        allow_abbrev=False,
+    )
+    report_parser.add_argument("--run", required=True, help="Manifest v2 to report")
+    report_parser.add_argument("--baseline", default=None,
+                               help="Earlier manifest to compare against")
+    report_parser.add_argument("--out", required=True, help="HTML output path")
+    report_parser.set_defaults(func=cmd_report)
 
     # lint subcommand
     lint_parser = subparsers.add_parser("lint", help="Validate scenario files")

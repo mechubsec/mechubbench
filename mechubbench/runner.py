@@ -30,6 +30,11 @@ class MCPError(Exception):
     pass
 
 
+class MCPSessionExpired(MCPError):
+    """The server no longer knows this client's MCP session."""
+
+
+
 class MCPClient:
     """Client for rust-junosmcp MCP server via streamable-HTTP bearer auth.
 
@@ -132,6 +137,16 @@ class MCPClient:
             )
             response.raise_for_status()
             return response
+        except httpx.HTTPStatusError as e:
+            body = getattr(e.response, "text", "")
+            body = body if isinstance(body, str) else ""
+            if e.response.status_code in (400, 404) and "session" in body.lower():
+                raise MCPSessionExpired(
+                    f"HTTP {e.response.status_code}: {body[:200]}".replace(
+                        self.token, "[REDACTED]"
+                    )
+                ) from None
+            raise MCPError(f"HTTP error: {str(e).replace(self.token, '[REDACTED]')}")
         except httpx.HTTPError as e:
             # Redact token from error message
             error_msg = str(e)
@@ -188,19 +203,38 @@ class MCPClient:
 
         raise MCPError("No valid JSON-RPC payload found in SSE stream")
 
-    def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict:
+    def call_tool(
+        self, tool_name: str, arguments: dict[str, Any], truncate: bool = True
+    ) -> dict:
         """Execute a tool via MCP protocol.
 
         Args:
             tool_name: Name of tool to call
             arguments: Tool arguments
+            truncate: Smart-truncate long text results (False for judge reads)
 
         Returns:
             Tool result dict (parsed from JSON in text content)
 
+        A call the HTTP layer rejected because the server dropped the session
+        (400/404 naming the session: idle expiry, restart) re-initializes
+        once and is retried once; the server never ran it. JSON-RPC errors
+        are never retried: device errors such as a NETCONF "session expired"
+        arrive that way after the tool may already have written.
+
         Raises:
             MCPError: If MCP returns error or result format is unexpected
         """
+        try:
+            return self._call_tool_once(tool_name, arguments, truncate)
+        except MCPSessionExpired:
+            logger.info("MCP session expired; re-initializing once")
+            self._initialize()
+            return self._call_tool_once(tool_name, arguments, truncate)
+
+    def _call_tool_once(
+        self, tool_name: str, arguments: dict[str, Any], truncate: bool
+    ) -> dict:
         self._request_id += 1
         payload = {
             "jsonrpc": "2.0",
@@ -243,7 +277,7 @@ class MCPClient:
         except json.JSONDecodeError:
             # Not JSON - return raw text with smart truncation
             MAX_TEXT_LEN = 8000
-            if len(text_content) > MAX_TEXT_LEN:
+            if truncate and len(text_content) > MAX_TEXT_LEN:
                 # Check if tool args specified a config_path (already scoped)
                 config_path = arguments.get("config_path") or arguments.get("path")
                 truncated, was_truncated = smart_truncate_config(

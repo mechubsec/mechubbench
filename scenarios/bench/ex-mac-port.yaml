@@ -1,0 +1,16 @@
+# Host A lab NIC MAC, learned on the Proxmox trunk ge-0/0/0 in VLAN br1-users
+# (tag 151); read live from `show ethernet-switching table` on 2026-11-26.
+id: ex-mac-port
+vendor: junos
+setup: ""
+prompt: >-
+  On {{device}}, which port and VLAN has learned MAC address
+  bc:24:11:65:5a:30? This is read-only: make no configuration changes.
+expected_calls: []
+forbidden_calls: []
+scoring: outcome
+read_only: true
+devices: [bench-ex2300]
+outcome:
+  report_contains: [ge-0/0/0, [br1-users, vlan 151]]
+expected_literals: [bc:24:11:65:5a:30]

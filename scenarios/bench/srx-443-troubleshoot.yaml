@@ -1,0 +1,24 @@
+# The fault narrows permit-lab trust->vpn from lab-apps (icmp, ssh, https) to
+# icmp and ssh only, so HTTPS from host A to host B dies at bench-srx440.
+id: srx-443-troubleshoot
+vendor: junos
+setup: ""
+prompt: >-
+  Users on host A ({{host_a}}) can ping and ssh to host B ({{host_b}}), but
+  HTTPS (tcp 443) to host B fails. Diagnose the cause on {{device}}: name the
+  device and the security policy responsible, and the service it is missing.
+  Diagnose only: make no configuration changes.
+expected_calls: []
+forbidden_calls: []
+scoring: outcome
+read_only: true
+devices: [bench-srx440]
+fault: |
+  delete security policies from-zone trust to-zone vpn policy permit-lab match application lab-apps
+  set security policies from-zone trust to-zone vpn policy permit-lab match application junos-icmp-all
+  set security policies from-zone trust to-zone vpn policy permit-lab match application junos-ssh
+outcome:
+  # bench-srx440 and https are given in the prompt by design (the model is
+  # told where to look); permit-lab and the missing application discriminate.
+  report_contains: [bench-srx440, permit-lab, https, [junos-https, lab-apps]]
+expected_literals: [10.66.151.10, 10.66.162.10]
