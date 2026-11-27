@@ -165,6 +165,16 @@ def test_device_check_limited_to_devices():
     assert not judge_attempt(scenario, "r1", "", mcp, {})[0]
 
 
+def test_report_matches_through_unicode_dashes_and_spaces():
+    """gpt-oss writes non-breaking hyphens; the name is still in the answer."""
+    scenario = _scenario(
+        outcome={"report_contains": ["permit-lab", "ge-0/0/0 vlan 151"],
+                 "report_order": ["bench-srx440", "bench-srx345"]}  # fmt: skip
+    )
+    message = "bench\u2011srx440 \u2192 bench\u2013srx345: **permit\u2011lab**, ge\u20100/0/0\u00a0vlan\u202f151"
+    assert judge_attempt(scenario, None, message, FakeMCP(), {})[0]
+
+
 def test_report_order():
     scenario = _scenario(outcome={"report_order": ["srx440", "srx1600", "srx345"]})
     message = "SRX440 then srx1600, srx345"

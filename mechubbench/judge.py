@@ -42,6 +42,14 @@ def _check_device(check: dict, device: str | None, mcp) -> str | None:
     return None
 
 
+# Models write U+2011 and friends inside names ("permit\u2011lab"); match as ASCII.
+_ASCII_FOLD = str.maketrans(
+    {**dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"), "-"),
+     **dict.fromkeys(map(ord, "\u00a0\u202f\u2007"), " "),
+     **dict.fromkeys(map(ord, "\u00ad\u200b\u200c\u200d\u2060\ufeff"), None)}
+)  # fmt: skip
+
+
 def _in_order(message: str, keywords: list[str]) -> bool:
     """True if each keyword occurs after the previous one somewhere in message."""
     start = 0
@@ -99,6 +107,7 @@ def judge_attempt(
     Raises:
         JudgeInfraError: MCP error while running a device check (infra, not a fail).
     """
+    final_message = (final_message or "").translate(_ASCII_FOLD)
     if scenario.get("read_only"):
         changed = sorted(name for name, entries in commits_by_device.items() if entries)
         if changed:
