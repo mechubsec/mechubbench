@@ -161,6 +161,9 @@ class CodexDriver:
                 "-s", "read-only",
                 "-c", f"mcp_servers.bench.url={json.dumps(mcp_url)}",
                 "-c", 'mcp_servers.bench.bearer_token_env_var="BENCH_TOKEN"',
+                # exec's approval policy is never, so unapproved MCP calls are
+                # rejected; the bench token's scope is the safety boundary.
+                "-c", 'mcp_servers.bench.default_tools_approval_mode="approve"',
                 "-c", 'web_search="disabled"',
                 "-c", f"model_catalog_json={json.dumps(str(catalog))}",
             ]  # fmt: skip
