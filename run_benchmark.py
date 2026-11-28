@@ -20,7 +20,6 @@ MODELS = [
     "qwen2.5:14b-instruct",  # Floor reference
     "qwen3.6:35b-a3b",       # Candidate
     "ornith:35b",            # Candidate
-    "gpt-oss:120b",          # Candidate (if fast enough)
 ]
 
 # Configuration

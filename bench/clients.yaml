@@ -1,3 +1,8 @@
 claude-code: {model: claude-opus-5-5, timeout_s: 900}
 codex: {model: gpt-6-astra, timeout_s: 900}
-hermes: {models: ollama, ollama_url: "http://strix.mechub.org:11434", timeout_s: 1800}
+# Dropped 2026-11-28 after full failures on several tests in both runs.
+hermes:
+  models: ollama
+  exclude: ["glm-4.7-flash:latest", "gpt-oss:120b"]
+  ollama_url: "http://strix.mechub.org:11434"
+  timeout_s: 1800

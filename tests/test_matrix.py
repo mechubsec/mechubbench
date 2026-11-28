@@ -283,7 +283,8 @@ def test_cli_matrix_wires_tokens_version_and_hermes(tmp_path, monkeypatch):
     (tmp_path / "golden.json").write_text("{}")
     (tmp_path / "clients.yaml").write_text(
         "codex: {model: gpt-6.2-astra, timeout_s: 60}\n"
-        "hermes: {models: ollama, ollama_url: 'http://o:11434', timeout_s: 90}\n"
+        "hermes: {models: ollama, exclude: [gemma4], ollama_url: 'http://o:11434',"
+        " timeout_s: 90}\n"
     )
     scenario = tmp_path / "s.yaml"
     scenario.write_text("id: read-explain\nprompt: hi\n")
@@ -308,7 +309,7 @@ def test_cli_matrix_wires_tokens_version_and_hermes(tmp_path, monkeypatch):
     monkeypatch.setattr(cli.runner, "MCPClient", FakeOperator)
     monkeypatch.setattr(
         cli, "ollama_models",
-        lambda url: ["qwen3:32b", "nomic-embed-text:latest", "gemma4"],
+        lambda url: ["qwen3:32b", "nomic-embed-text:latest", "gemma4", "glm"],
     )  # fmt: skip
     monkeypatch.setattr(cli.matrix, "run_matrix", fake_run_matrix)
     args = cli.build_parser().parse_args([
@@ -324,7 +325,7 @@ def test_cli_matrix_wires_tokens_version_and_hermes(tmp_path, monkeypatch):
     assert args.func(args) == 0
     assert seen == {
         "entries": [("codex", "gpt-6.2-astra"), ("hermes", "qwen3:32b"),
-                    ("hermes", "gemma4")],
+                    ("hermes", "glm")],
         "token": TOKEN,
         "version": "2.8.1",
         "timeouts": {"codex": 60, "hermes": 90},

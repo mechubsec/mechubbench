@@ -47,6 +47,9 @@ qwen3-coder-next, gpt-oss:120b, ornith:35b. "All models downloaded" means the li
 time. A "model" on the chart is client + model (the same model under two clients would be
 two entries).
 
+2026-11-28: glm-4.7-flash and gpt-oss:120b are dropped from scope. They are listed under
+`hermes.exclude` in `bench/clients.yaml`, so newly pulled models are still picked up.
+
 If an Ollama model is a full failure on more than one test, the report flags it so the user
 can decide whether to drop it. Nothing is dropped automatically.
 

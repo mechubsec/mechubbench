@@ -456,6 +456,8 @@ def _matrix_entries(config: dict, wanted: list[str]) -> list[tuple]:
                     for name in ollama_models(settings["ollama_url"])
                     if "embed" not in name
                 ]
+            excluded = set(settings.get("exclude", []))
+            models = [model for model in models if model not in excluded]
             entries.extend((client, model, driver) for model in models)
         else:
             raise ValueError(f"unknown client {client!r}")
